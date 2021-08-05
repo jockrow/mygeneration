@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<DefaultSettings Version="1.3.1.1" FirstTime="false">
+<DefaultSettings Version="1.3.1.1" FirstTime="True">
   <Setting Name="VersionRSSUrl" value="http://sourceforge.net/export/rss2_projfiles.php?group_id=198893" />
   <Setting Name="TemplateBrowserExecAsync" value="True" />
   <Setting Name="ShowDefaultDatabaseOnly" value="False" />
