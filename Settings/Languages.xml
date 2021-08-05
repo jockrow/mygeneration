@@ -357,6 +357,32 @@
 		<Type From="UNSIGNEDINTEGER" To="decimal" />
 		<Type From="VARCHAR2" To="string" />
 	</Language>
+	<Language From="ORACLE" To="Java">
+		<Type From="ANYDATA" To="Object" />
+		<Type From="BFILE" To="byte[]" />
+		<Type From="BLOB" To="byte[]" />
+		<Type From="CHAR" To="String" />
+		<Type From="CLOB" To="String" />
+		<Type From="DATE" To="Date" />
+		<Type From="FLOAT" To="Decimal" />
+		<Type From="INTEGER" To="Decimal" />
+		<Type From="INTERVAL YEAR TO MONTH" To="Integer" />
+		<Type From="INTERVAL DAY TO SECOND" To="TimeSpan" />
+		<Type From="LONG" To="String" />
+		<Type From="LONGRAW" To="byte[]" />
+		<Type From="NCHAR" To="String" />
+		<Type From="NCLOB" To="String" />
+		<Type From="NUMBER" To="Integer" />
+		<Type From="NVARCHAR2" To="String" />
+		<Type From="RAW" To="byte[]" />
+		<Type From="ROWID" To="String" />
+		<Type From="UROWID" To="String" />
+		<Type From="TIMESTAMP" To="Date" />
+		<Type From="TIMESTAMP WITH TIME ZONE" To="Date" />
+		<Type From="TIMESTAMP WITH LOCAL TIME ZONE" To="Date" />
+		<Type From="UNSIGNEDINTEGER" To="Decimal" />
+		<Type From="VARCHAR2" To="String" />
+	</Language>
 	<Language From="ORACLE" To="VB.NET">
 		<Type From="ANYDATA" To="Object" />
 		<Type From="BFILE" To="Byte()" />
@@ -2082,7 +2108,7 @@
 		<Type From="Integer" To="int" />
 		<Type From="Double" To="double" />
 		<Type From="Currency" To="decimal" />
-		<Type From="Logical" To="bool" /> />
+		<Type From="Logical" To="bool" />
 		<Type From="Varbinary" To="Byte()" />
 		<Type From="Varchar" To="string" />
 		<Type From="Float" To="float" />
@@ -2135,5 +2161,11 @@
     <Type From="TIMESTAMP WITH TIME ZONE" To="DateTime" />
     <Type From="INTERVAL YEAR TO MONTH" To="Integer" />
     <Type From="INTERVAL DAY TO SECOND" To="TimeSpan" />
+  </Language>
+  <Language From="SQLITE" To="java">
+    <Type From="CHAR" To="String" />
+    <Type From="DATE" To="Date" />
+    <Type From="VARCHAR2" To="String" />
+    <Type From="NUMBER" To="Integer" />
   </Language>
 </Languages>
