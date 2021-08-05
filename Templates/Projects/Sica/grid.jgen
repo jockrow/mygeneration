@@ -1,0 +1,134 @@
+﻿##|TYPE Template
+##|UNIQUEID dc0d5346-b9a0-4db0-87ae-e9b7a130a6e0
+##|TITLE Grid
+##|NAMESPACE Projects.Sica
+##|SOURCE_TYPE Source
+##|OUTPUT_LANGUAGE Java
+##|GUI_ENGINE Microsoft Script
+##|GUI_LANGUAGE JScript
+##|GUI_BEGIN
+<%#SCRIPT ..\..\Capture\outputTables.js%>
+##|GUI_END
+##|BODY_MODE Markup
+##|BODY_ENGINE Microsoft Script
+##|BODY_LANGUAGE JScript
+##|BODY_TAG_START <%
+##|BODY_TAG_END %>
+##|BODY_BEGIN
+<%
+//------------------------------------------------------------------------------
+// Richard Martínez
+// 22/06/2016
+//
+//  Genera la grilla pages/Grid.jsp para
+//	%SICA_HOME%\sica.1.View\WebContent\content\pages\grupocafetero\gruposCafeterosGrid.jsp
+//------------------------------------------------------------------------------
+
+// collect needed data/objects and put them in local variables
+var databaseName = input.Item("cmbDatabase");
+var tablenames = input.Item("lstTables"); 
+var database = MyMeta.Databases.Item(databaseName);
+
+// Filename info
+var filepath = input.item("txtPath");
+if (filepath.charAt(filepath.length - 1) != '\\') { filepath += "\\"; }
+for (var i = 0; i < tablenames.Count; i++){
+	var tableName = tablenames.item(i);
+	var tableMeta = database.Tables.Item(tableName);
+	var objectAlias = tableMeta.Alias.split(" ").join("");
+	
+	var typeFolder = "pages/";
+	var firstUpperCase = tableName.toLowerCase().replace(/^sc_/, "").replace(/(^|_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+	var firstLowerCase = firstUpperCase.replace(/^./, function(v) { return v.toLowerCase(); });
+	var allLowerCase = firstLowerCase.toLowerCase();
+	var filename = filepath + typeFolder + firstUpperCase + "Grid.jsp";
+
+	var primaryKey = tableMeta.PrimaryKeys.Item(0).name.toLowerCase().replace(/(_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+	
+	output.writeln('<\%@ taglib uri="http://java.sun.com/jsf/html" prefix="h"%\>');
+	output.writeln('<\%@ taglib uri="http://java.sun.com/jsf/core" prefix="f"%\>');
+	output.writeln('<\%@ taglib uri="http://fenix.com/jsf" prefix="fenix"%\>');
+	output.writeln('<\%@ taglib uri="http://myfaces.apache.org/tomahawk" prefix="t"%\>');
+%>
+<f:loadBundle basename="co.fnc.sica.afic.config.messages.<%=firstLowerCase%>"
+	var="msg" />
+<h:form id="myform">
+
+	<h:panelGrid id="pgTitle" styleClass="tMsgTitle01">
+		<h:outputText value="#{msg['<%=allLowerCase%>.title']}" />
+	</h:panelGrid>
+
+	<h:panelGrid id="pgData" columns="1" styleClass="tGrid">
+		<fenix:pgindex dataTableId="idPager" showpages="5" plugDB="true"
+			bindingManaged="#{ctrl<%=firstUpperCase%>}">
+			<h:dataTable id="idPager" value="#{ctrl<%=firstUpperCase%>.data}" var="data"
+				rows="10" rowClasses="gridRowOne,gridRowTwo">
+				<t:column>
+					<f:facet name="header">
+						<t:outputText value="" />
+					</f:facet>
+					<fenix:tableRadioButton name="colRB01" overrideName="true"
+						itemValue="#{data.<%=primaryKey%>}"
+						value="#{ctrl<%=firstUpperCase%>.idSelected}" />
+				</t:column>
+<%
+	for (var j = 0; j < tableMeta.Columns.Count; j++){	
+			var column = tableMeta.Columns.Item(j);
+			var columnName = column.name.toLowerCase().replace(/(_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+			var dotColumnName = column.name.toLowerCase().replace(/_/g, ".");
+
+			if(!column.IsInPrimaryKey && !column.name.match(/^ID_.*/) && !column.name.match(/^.*_CREACION.*$/) && !column.name.match(/^.*_MODIFICACION.*$/)){
+			%>
+				<h:column>
+					<f:facet name="header">
+						<fenix:pgcolumn bindingManaged="#{ctrl<%=firstUpperCase%>}"
+							idQueryColumn="<%=j%>" label="#{msg['<%=allLowerCase%>.<%=dotColumnName%>']}"
+							sort="true" filter="true" filterType="text" />
+					</f:facet>
+					<h:outputText value="#{data.<%=columnName%>}" />
+				</h:column>
+<%
+			}
+	}
+%>
+			</h:dataTable>
+		</fenix:pgindex>
+	</h:panelGrid>
+
+	<h:panelGrid id="pgButtons" columns="4">
+		<t:commandButton id="btCreate" immediate="true"
+			value="#{msgGral['button.create']}"
+			action="#{ctrl<%=firstUpperCase%>.actionGoToCrear<%=firstUpperCase%>}"
+			visibleOnUserRole="#{ctrlSecurity.rolesByAction['<%=allLowerCase%>.create']}" />
+		<t:commandButton id="btUpdate" value="#{msgGral['button.update']}"
+			action="#{ctrl<%=firstUpperCase%>.actionGoToUpdate<%=firstUpperCase%>}"
+			onclick="if (!checkIsSelectedAtLeastOne('#{msgGral['select.atleast.one']}')) return false;"
+			visibleOnUserRole="#{ctrlSecurity.rolesByAction['<%=allLowerCase%>.update']}" />
+		<t:commandButton id="btConsultar" value="#{msgGral['button.query']}"
+			action="#{ctrl<%=firstUpperCase%>.actionGoToConsulta<%=firstUpperCase%>}"
+			onclick="if (!checkIsSelectedAtLeastOne('#{msgGral['select.atleast.one']}')) return false;"
+			visibleOnUserRole="#{ctrlSecurity.rolesByAction['<%=allLowerCase%>.query']}" />
+		<t:commandButton id="btEliminar" value="#{msgGral['button.delete']}"
+			action="#{ctrl<%=firstUpperCase%>.actionDelete<%=firstUpperCase%>}"
+			title="#{msgGral['button.delete']}"
+			onclick="if (!confirmDelete('#{msg['<%=allLowerCase%>.confirm.delete']}', '#{msgGral['select.atleast.one']}')) return false;"
+			visibleOnUserRole="#{ctrlSecurity.rolesByAction['<%=allLowerCase%>.delete']}" />
+	</h:panelGrid>
+
+	<h:panelGrid id="errores" columns="1" columnClasses="fTdError">
+		<h:messages globalOnly="true" />
+	</h:panelGrid>
+	<h:panelGrid id="message" styleClass="tMsgConfirm">
+		<h:message for="message" />
+	</h:panelGrid>
+
+</h:form>
+<%
+	output.save(filename, false);
+	var buffer = "";
+	output.clear();
+	buffer = output.text;
+	output.write(buffer);
+}
+%>
+##|BODY_END

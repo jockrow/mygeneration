@@ -1,0 +1,117 @@
+﻿##|TYPE Template
+##|UNIQUEID a84ded0a-dca1-4c12-b4ff-2e452a683235
+##|TITLE ControlsMyGeneration
+##|NAMESPACE Capture
+##|SOURCE_TYPE Source
+##|OUTPUT_LANGUAGE Java
+##|GUI_ENGINE .Net Script
+##|GUI_LANGUAGE C#
+##|GUI_BEGIN
+//<FILE MetaDataBrowser.cs%>
+using System.Collections.Specialized;
+//using MyGeneration.dOOdads;
+
+public class GeneratedGui : DotNetScriptGui
+{
+	//private IMyGenerationMDI mdi;
+	//DockPanel dockPanel;
+	
+	public GeneratedGui(ZeusContext context) : base(context) {}
+
+	//-----------------------------------------
+	// The User Interface Entry Point
+	//-----------------------------------------
+	public override void Setup()
+	{
+		//MyGeneration.MyGenerationMDI;
+
+		//ui.Width  = 100;
+		//ui.Height = 100;
+		//GuiLabel lblDemo = ui.AddLabel("lblDemo", "Demo", "Demo Tooltip");
+		//ui.ShowGui = true;
+		
+		//this.MetaData;
+	}
+	
+	 public interface IMyGenerationMDI
+    {
+        //FindForm FindDialog { get; }
+        //ReplaceForm ReplaceDialog { get; }
+        //ScintillaConfigureDelegate ConfigureDelegate { get; }
+        //DockPanel DockPanel { get; }
+    }
+	
+	/*
+	protected override void Dispose( bool disposing )
+	{
+	
+		if( disposing )
+		{
+			if(components != null)
+			{
+				components.Dispose();
+			}
+		}
+		base.Dispose( disposing );
+		
+	}
+	*/
+
+}
+
+
+//////////////////////////////////////////////////////////
+
+/*
+//using System;
+
+//using System.Collections.Generic;
+//using System.Text;
+
+//using Scintilla;
+//using Scintilla.Forms;
+//using Scintilla.Configuration;
+//using Scintilla.Configuration.SciTE;
+//using WeifenLuo.WinFormsUI.Docking;
+
+namespace MyGeneration
+{
+    public interface IMyGenerationMDI
+    {
+        //FindForm FindDialog { get; }
+        //ReplaceForm ReplaceDialog { get; }
+        //ScintillaConfigureDelegate ConfigureDelegate { get; }
+        //DockPanel DockPanel { get; }
+    }
+}
+*/
+##|GUI_END
+##|BODY_MODE Markup
+##|BODY_ENGINE .Net Script
+##|BODY_LANGUAGE C#
+##|BODY_TAG_START <%
+##|BODY_TAG_END %>
+##|BODY_BEGIN
+<%
+
+//public class GeneratedTemplate : IMyGenContent
+public class GeneratedTemplate : DotNetScriptTemplate
+{
+	public GeneratedTemplate(ZeusContext context) : base(context) {}
+		
+	//public UserMetaData			UserData = null;	
+	//private IMyGenerationMDI mdi;
+		
+
+	//---------------------------------------------------
+	// Render() is where you want to write your logic    
+	//---------------------------------------------------
+	public override void Render()
+	{
+		output.writeln("Hello world.");
+	}
+
+}
+
+%>
+##|BODY_END

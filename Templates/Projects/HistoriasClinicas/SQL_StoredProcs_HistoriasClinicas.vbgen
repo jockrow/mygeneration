@@ -1,0 +1,1317 @@
+﻿##|TYPE Template
+##|UNIQUEID 10998336-5037-496c-a163-050060de065a
+##|TITLE dOOdad Stored Procedures
+##|NAMESPACE Microsoft SQL Server
+##|SOURCE_TYPE Source
+##|OUTPUT_LANGUAGE Transact-SQL
+##|COMMENTS_BEGIN
+Use this for SQL dOOdads or other business entities. Select multiple tables and generate all your stored procedures
+in one click!
+##|COMMENTS_END
+##|GUI_ENGINE Microsoft Script
+##|GUI_LANGUAGE VBScript
+##|GUI_BEGIN
+
+Dim cmbDatabases
+Dim lstTables
+
+Sub setup()
+
+	Dim sOutputPath
+
+	If Not input.Contains("lstTables") Or Not input.Contains("txtPath") Then
+
+		If context.Objects.ContainsKey("DnpUtils") Then
+			DnpUtils.ReadInputFromCache(context)
+		End if
+
+		ui.Title = "Microsoft SQL Server Stored Procedures"
+		ui.Width  = 330
+		ui.Height = 510
+
+		' Grab default output path
+		sOutputPath = ""
+		If input.Contains("defaultOutputPath") Then
+			sOutputPath = input.Item("defaultOutputPath")
+		End If
+
+		ui.AddLabel "lblPath", "Output file path: ",  "Select the output path."
+		ui.AddTextBox "txtPath", sOutputPath, "Select the Output Path."
+		ui.AddFilePicker "btnPath", "Select Path", "Select the Output Path.", "txtPath", true
+
+		' List Databases in a ComboBox
+		ui.AddLabel "lblDatabases", "Select a database:", "Select a database in the dropdown below."
+		Set cmbDatabases = ui.AddComboBox("cmbDatabase", "Select a database.")
+
+		' List Tables in a listbox
+		ui.AddLabel "lblTables", "Select tables:", "Select tables from the listbox below."
+		Set lstTables = ui.AddListBox ("lstTables", "Select tables:")
+		lstTables.Height = 150
+
+		' Attach the onchange event to the cmbDatabases control.
+		setupDatabaseDropdown cmbDatabases
+		cmbDatabases.AttachEvent "onchange", "cmbDatabases_onchange"
+
+		' Add options
+		ui.AddCheckBox "chkAlter", "Use ALTER procedures", False, "Check this to ALTER existing stored procedures, good for preserving permissions"
+		ui.AddCheckBox "chkGenDoc", "Generate Documentation", True, "Check this to generate documentation after stored procedures are generated"
+		ui.AddCheckBox "chk2005", "Targeting SQL 2005", False, "Check this if you are using SQL 2005"
+
+		ui.ShowGUI = True
+	Else
+		ui.ShowGUI = False
+	End if
+
+End Sub
+
+Sub setupDatabaseDropdown(cmbDatabases)
+	cmbDatabases.BindData MyMeta.Databases
+
+	If Not MyMeta.DefaultDatabase Is Nothing Then
+		cmbDatabases.SelectedValue = MyMeta.DefaultDatabase.Name
+		bindTables cmbDatabases.SelectedValue
+	End If
+End Sub
+
+Sub bindTables(sDatabase)
+	Set db = MyMeta.Databases(sDatabase)
+	lstTables.BindData(db.Tables)
+End Sub
+
+' Event Handler
+Sub cmbDatabases_onchange(control)
+	Set cmbDatabases = ui.item("cmbDatabase")
+	bindTables cmbDatabases.SelectedText
+End Sub
+##|GUI_END
+##|BODY_MODE Markup
+##|BODY_ENGINE Microsoft Script
+##|BODY_LANGUAGE VBScript
+##|BODY_TAG_START <%
+##|BODY_TAG_END %>
+##|BODY_BEGIN
+<%
+'------------------------------------------------------------------------------
+' SQL_StoredProcs.vbgen
+' Last Update : 12/23/2005
+'
+' Be sure to rename this template if you plan to customize it, MyGeneration
+' Software will update this template with new builds.
+'------------------------------------------------------------------------------
+'
+'  This template generates 5 stored procedures
+'
+'  1) proc[TableName]LoadByPrimaryKey
+'  2) proc[TableName]LoadAll
+'  3) proc[TableName]Update
+'  4) proc[TableName]Insert
+'  5) proc[TableName]Delete
+'
+'  There is script in the "Interface Code" tab that pops up a dialog so you can tell this tempate
+'  where to save the files and what tables you want to generate stored procedures for.  So, the
+'  logic at a very high level looks like this:
+'
+'   For Each TableName in Select Tables
+'        objTable = database.Tables(TableName)
+'
+'	Generate the 5 stored procs
+'
+'   Save file
+'
+'  However, all of the script ends up in the Output tab and you can copy this right into
+'  Sql QueryAnalyzer and execute it.  It's a pretty smart template, it knows to make
+'  Identity Columns output parameters to return them, the same holds true for computed
+'  Columns. It knows how to use PrimaryKeys in WHERE clauses and not to update them
+'  in the UpdateStored Proc, if you have a TimeStamp it will do the comparison for you and
+'  so on.  This template alone can save you tons of time, and at anytime you can regenerate
+'  them as tables change.
+'======================================================================
+
+If context.Objects.ContainsKey("DnpUtils") Then
+	DnpUtils.SaveInputToCache(context)
+End if
+
+Dim objDatabase
+Dim objTable
+Dim objColumn
+Dim props
+Dim intLp
+Dim blnFirst
+Dim strProcName
+Dim blnHasComputed
+Dim strWhereClause
+Dim strWhereAnd
+Dim strWhereFields
+Dim strComma
+Dim colTableNames
+Dim strBuffer
+Dim strDatabaseName
+Dim blnGenDoc
+Dim strFilename
+Dim strFilenameBase
+Dim intLen
+Dim intPos
+Dim chk2005
+Dim prefijo
+
+strDatabaseName  = input.Item("cmbDatabase")
+Set objDatabase = MyMeta.Databases(strDatabaseName)
+
+Set colTableNames = input.Item("lstTables")
+
+' Do we do ALTER or CREATE
+alterStatement = input.Item("chkAlter")
+
+' Do we do Generate Documentation
+blnGenDoc = input.Item("chkGenDoc")
+
+chk2005 = input.Item("chk2005")
+
+' Save the output file for this Table
+strFilenameBase = input.Item("txtPath")
+
+intLen = Len(strFilenameBase)
+intPos = InStrRev(strFilenameBase, "\")
+
+If Not intPos = intLen Then
+	strFilenameBase = strFilenameBase & "\"
+End If
+%>
+USE [<%output.write objDatabase.Name %>]
+GO
+<%
+
+' Loop through the tables the user select and generate the stored procs and save them to disk
+For intLp = 0 To colTableNames.Count - 1
+
+	Set objTable = objDatabase.Tables(colTableNames.item(intLp))
+
+	If objTable.PrimaryKeys.Count = 0 Then
+		output.write "-- ERROR: Table '" & objTable.Name & "' must have a primary key" & vbCrLf
+		Exit For
+	End If
+
+'----------------------------------------------------------------------
+' LoadByPrimaryKey
+'----------------------------------------------------------------------
+strProcName = "sp_" & objTable.Name & "_load"
+Dim strComentario
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+'strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	Trae los registros para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": Opcional, llave primaria de la tabla " & objTable.Name & ", si se coloca sólo trae el registro de esta llave"
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
+%>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
+(<%
+	' List all keys as parameters
+	blnFirst = True
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+		If Not blnFirst Then
+			output.write  "," & vbCrLf
+		End if
+		blnFirst = False
+		output.writeLn "	@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete & " = NULL"
+	Next
+
+	For i=1 to objTable.Columns.Count - 1
+		Set objColumn = objTable.Columns(i)
+		If getParametro(objColumn, "Search") <> "" Then
+			If InStr(objColumn.DataTypeName, "date") Then
+				output.writeLn "	,@ini" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete & " = NULL"
+				output.writeLn "	,@fin" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete & " = NULL"
+			Else
+				output.writeLn "	,@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete & " = NULL"
+			End If
+		End If
+	Next
+%>
+)
+AS
+BEGIN
+	SET NOCOUNT ON
+	DECLARE @Err int
+
+	SELECT
+<%
+	' List all fields
+	blnFirst = True
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+		If Not blnFirst Then
+			output.write  "," & vbCrLf
+		End if
+		blnFirst = False
+		output.write "		[" & objColumn.Name & "]"
+	Next
+
+	output.write vbCrLf
+%>	FROM [<%output.write objTable.Name %>]
+	WHERE
+<%
+	' Compare keys with parameters
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
+		output.writeLn "		(@" & objColumn.Name & " IS NULL OR " & objColumn.Name & " = @" & objColumn.Name & ")"
+	Next
+	For i=1 to objTable.Columns.Count - 1
+		Set objColumn = objTable.Columns(i)
+		If getParametro(objColumn, "Search") <> "" Then
+			' If objColumn.DataTypeName = "varchar" OR objColumn.DataTypeName = "char" OR objColumn.DataTypeName = "text" Then
+			If InStr(objColumn.DataTypeName, "char") OR objColumn.DataTypeName = "text" Then
+				output.writeLn "		AND (@" & objColumn.Name & " IS NULL OR " & objColumn.Name & " LIKE '%' + @" & objColumn.Name & " + '%')"
+			ElseIf InStr(objColumn.DataTypeName, "date") Then
+				output.writeLn "		AND (@" & objColumn.Name & " IS NULL OR " & objColumn.Name & " BETWEEN @ini" & objColumn.Name & " AND @fin" & objColumn.Name & ")"
+			Else
+				output.writeLn "		AND (@" & objColumn.Name & " IS NULL OR " & objColumn.Name & " = @" & objColumn.Name & ")"
+			End If
+		End If
+	Next
+	output.writeLn "	ORDER BY " & objTable.Columns(1).Name
+%>
+	SET @Err = @@Error
+
+	RETURN @Err
+END
+GO
+
+<%If blnGenDoc Then%>
+-- Display the status of Proc creation
+IF (@@Error = 0) PRINT 'Procedure Creation: <%output.write strProcName%> Succeeded'
+ELSE PRINT 'Procedure Creation: <%output.write strProcName%> Error on Creation'
+GO
+<%End If
+'----------------------------------------------------------------------
+' Update
+'----------------------------------------------------------------------
+Dim colCount
+colCount = 0
+'For Each objColumn In objTable.Columns
+For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+	If objColumn.IsInPrimaryKey Or objColumn.IsComputed Then
+		colCount = ColCount + 1
+	End If
+Next
+
+If (objTable.Columns.Count = colCount)  Then
+	output.writeLn ""
+	output.writeLn "-------------------------------------------"
+	output.writeLn "-- NO UPDATE Stored Procedure Generated    "
+	output.writeLn "-- All Columns are part of the Primary key "
+	output.writeLn "-------------------------------------------"
+	output.writeLn ""
+Else
+strProcName = "sp_" & objTable.Name & "_update"
+
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+'strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	actualiza un registro para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": llave primaria de la tabla " & objTable.Name & ", para actualizar ese registro"
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
+%>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
+(
+<%
+	' List all parameters
+	blnFirst = True
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+
+		If Not blnFirst Then
+			output.write  "," & vbCrLf
+		End if
+
+		blnFirst = False
+
+		output.write "	@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete
+
+		If objColumn.IsNullable Or objColumn.IsComputed Then
+			output.write " = NULL"
+		End If
+
+		If objColumn.IsComputed Then
+			output.write " output"
+		End If
+
+	Next
+%>
+)
+AS
+BEGIN
+
+	SET NOCOUNT OFF
+	DECLARE @Err int
+
+	UPDATE [<%output.write objTable.Name %>]
+	SET
+<%
+	' List all fields
+	blnFirst = True
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+
+		If Not objColumn.IsInPrimaryKey And Not objColumn.IsAutoKey And Not objColumn.IsComputed Then
+
+			If Not blnFirst Then
+				output.write  "," & vbCrLf
+			End if
+
+			blnFirst = False
+
+			output.write "		[" & objColumn.Name & "] = @" & TrimSpaces(objColumn.Name)
+		End If
+	Next
+
+	output.write vbCrLf
+%>	WHERE
+<%
+	' Compare keys with parameters
+	blnFirst = True
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+		If Not blnFirst Then
+			output.write "	AND	[" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf
+		Else
+			output.write "		[" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf
+		End if
+		blnFirst = False
+	Next
+
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+		If objColumn.DataTypeName = "timestamp" Then
+			If Not chkYukon Then
+				output.write "	AND TSEQUAL([" & objColumn.Name & "],@" & GetParameterName(objColumn) & ")" & vbCrLf
+			Else
+				output.write "	AND [" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf
+			End If
+		End if
+	Next
+%>
+
+	SET @Err = @@Error
+<%
+	' Add the Logic to return computed columns if necessary
+	blnHasComputed = False
+	strWhereClause = ""
+	strWhereAnd = ""
+	strWhereFields = ""
+	strComma = ""
+
+	blnFirst = True
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+
+		If objColumn.IsComputed Then
+			blnHasComputed = True
+		End If
+
+		If objColumn.IsInPrimaryKey Then
+			strWhereClause = strWhereClause & strWhereAnd & "[" & objColumn.Name & "] = @" & GetParameterName(objColumn)
+			strWhereAnd = " AND "
+		End If
+
+		If objColumn.IsComputed Then
+			strWhereFields = strWhereFields & strComma & "@" & GetParameterName(objColumn) & " = [" &  objColumn.Name & "]"
+			strComma =  ", "
+		End If
+	Next
+
+	If blnHasComputed Then
+		output.write vbCrLf
+		output.write "    SELECT "
+		output.write strWhereFields
+		output.write vbCrLf & "      FROM [" & objTable.Name & "]"
+		output.write vbCrLf & "     WHERE " & strWhereClause & vbCrLf
+	End If
+%>
+
+	RETURN @Err
+END
+GO
+
+<%If blnGenDoc Then%>
+-- Display the status of Proc creation
+IF (@@Error = 0) PRINT 'Procedure Creation: <%output.write strProcName%> Succeeded'
+ELSE PRINT 'Procedure Creation: <%output.write strProcName%> Error on Creation'
+GO
+
+<% End If ' objTable.Columns.Count = objTable.PrimaryKeys.Count %>
+
+<%End If
+
+'----------------------------------------------------------------------
+' Insert
+'----------------------------------------------------------------------
+strProcName = "sp_" & objTable.Name & "_insert"
+
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+'strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	Elimina un registro para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": dato para el campo " & GetParameterName(objColumn)
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
+%>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
+(
+<%
+	' List all fields as parameters
+	blnFirst = True
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+
+		If Not blnFirst Then
+			output.write "," & vbCrLf
+		End If
+
+		blnFirst = False
+
+		output.write "	@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete
+
+		If objColumn.IsNullable Or objColumn.IsComputed Or objColumn.IsAutoKey Then
+			output.write " = NULL"
+		End If
+
+		If objColumn.IsAutoKey Or objColumn.IsComputed Then
+			output.write " output"
+		End If
+	Next
+%>
+)
+AS
+BEGIN
+
+	SET NOCOUNT OFF
+	DECLARE @Err int
+<%
+	' generate code to initialize (if necessary) for all keys of uniqueidentifier type
+	blnFirst = True
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
+
+		If objColumn.DataTypeNameComplete = "uniqueidentifier" Then
+			output.write "	IF @" & GetParameterName(objColumn) & " IS NULL" & vbCrLf
+			output.write "		 SET @" & GetParameterName(objColumn) & " = NEWID()" & vbCrLf
+			output.write vbCrLf
+			output.write "	SET @Err = @@Error" & vbCrLf
+			output.write vbCrLf
+			output.write "	IF (@Err <> 0)" & vbCrLf
+			output.write "	    RETURN @Err" & vbCrLf
+			output.write vbCrLf
+		End If
+	Next
+%>
+	INSERT
+	INTO [<%output.write objTable.Name %>]
+	(
+<%
+		' List all fields except identity (if one exists)
+		blnFirst = True
+		'For Each objColumn In objTable.Columns
+		For i=0 to objTable.Columns.Count - 1
+			Set objColumn = objTable.Columns(i)
+
+			' Check if field is not an indentity in which case we won't include it into insert list
+			If Not objColumn.IsAutoKey And Not objColumn.IsComputed Then
+				If Not blnFirst Then
+					output.write  "," & vbCrLf
+				End if
+
+				blnFirst = False
+
+				output.write "		[" & objColumn.Name & "]"
+			End If
+		Next
+
+		output.write vbCrLf
+%>	)
+	VALUES
+	(
+<%
+		' List all parameters except the one for indetity (if one exists)
+		blnFirst = True
+		'For Each objColumn In objTable.Columns
+		For i=0 to objTable.Columns.Count - 1
+			Set objColumn = objTable.Columns(i)
+
+			' check if fields is not an identity
+			If Not objColumn.IsAutoKey And Not objColumn.IsComputed Then
+				If Not blnFirst Then
+					output.write  "," & vbCrLf
+				End if
+
+				blnFirst = False
+
+				output.write "		@" & GetParameterName(objColumn)
+			End If
+		Next
+
+		output.write vbCrLf
+%>	)
+
+	SET @Err = @@Error
+
+<%
+	' Add the Logic to return computed columns if necessary
+	blnHasComputed = False
+	strWhereClause = ""
+	strWhereAnd = ""
+	strWhereFields = ""
+	strComma = ""
+
+	blnFirst = True
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+		Set objColumn = objTable.Columns(i)
+
+		If objColumn.IsAutoKey Then
+			output.write "	SELECT @" & GetParameterName(objColumn) & " = SCOPE_IDENTITY()" & vbCrLf
+		End If
+
+		If objColumn.IsComputed Then
+			blnHasComputed = True
+		End If
+
+		If objColumn.IsInPrimaryKey Then
+			strWhereClause = strWhereClause & strWhereAnd & "[" & objColumn.Name & "] = @" & GetParameterName(objColumn)
+			strWhereAnd = " AND "
+		End If
+
+		If objColumn.IsComputed Then
+			strWhereFields = strWhereFields & strComma & "@" & GetParameterName(objColumn) & " = [" &  objColumn.Name & "]"
+			strComma =  ", "
+		End If
+	Next
+
+	If blnHasComputed Then
+		output.write vbCrLf
+		output.write "    SELECT "
+		output.write strWhereFields
+		output.write vbCrLf & "      FROM [" & objTable.Name & "]"
+		output.write vbCrLf & "     WHERE " & strWhereClause & vbCrLf
+	End If
+%>
+	RETURN @Err
+END
+GO
+
+<%If blnGenDoc Then%>
+-- Display the status of Proc creation
+IF (@@Error = 0) PRINT 'Procedure Creation: <%output.write strProcName %> Succeeded'
+ELSE PRINT 'Procedure Creation: <%output.write strProcName %> Error on Creation'
+GO
+<%End If
+
+'----------------------------------------------------------------------
+' Delete
+'----------------------------------------------------------------------
+strProcName = "sp_" & objTable.Name & "_delete"
+
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+'strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	Elimina un registro para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": llave primaria de la tabla " & objTable.Name & ", para eliminar ese registro"
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
+%>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
+(
+<%
+	' List all keys as parameters
+	blnFirst = True
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
+
+		' check if at end of keys
+		If Not blnFirst Then
+			output.write "," & vbCrLf
+		End If
+
+		blnFirst = False
+
+		output.write "	@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete
+	Next
+%>
+)
+AS
+BEGIN
+
+	SET NOCOUNT OFF
+	DECLARE @Err int
+
+	DELETE
+	FROM [<%output.write objTable.Name %>]
+	WHERE
+<%
+	' Compare keys with parameters
+	blnFirst = True
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
+
+		' Continue where part with an AND
+		If Not blnFirst Then
+			output.write " AND" & vbCrLf
+		End If
+
+		blnFirst = False
+
+		output.write "		[" & objColumn.Name & "] = @" & GetParameterName(objColumn)
+	Next
+%>
+	SET @Err = @@Error
+
+	RETURN @Err
+END
+GO
+
+<%If blnGenDoc Then%>
+-- Display the status of Proc creation
+IF (@@Error = 0) PRINT 'Procedure Creation: <%= strProcName %> Succeeded'
+ELSE PRINT 'Procedure Creation: <%= strProcName %> Error on Creation'
+GO
+
+
+
+
+
+
+
+///////////////////////Interfaz Completa
+	<asp:HiddenField ID="hdNumRows" runat="server" />
+	<h2><%= objTable.Alias %></h2>
+	<table cellpadding="0" cellspacing="0" runat="server" id="tblLista">
+	<tr>
+	<td width="350">
+	<fieldset>
+	<legend>Criterios de Búsqueda</legend>
+	<table cellpadding="0" cellspacing="0"> <%
+blnFirst = True
+For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+	If getParametro(objColumn, "Search") <> "" Then
+%>
+	<tr>
+		<td>
+			<%= objColumn.Alias %>:</td>
+			<td> <%
+		If getParametro(objColumn, "tipoCampoHtml") = "DropDownList" Then
+		%>
+			<asp:DropDownList ID="ddlSearch<%= objColumn.Name %>" runat="server" /><%
+		ElseIf objColumn.DataTypeName = "bit" Then
+		%>
+			<asp:DropDownList ID="ddlSearch<%= objColumn.Name %>" runat="server">
+				<asp:ListItem Value="" Text="Todos" />
+				<asp:ListItem Value="1" Text="Activo" />
+				<asp:ListItem Value="0" Text="Inactivo" />
+			</asp:DropDownList> <%
+
+
+		ElseIf InStr(objColumn.DataTypeName, "date") <> 0 Then %>
+				<table cellpadding="0" cellspacing="0">
+				<tr>
+				<td> Entre:&nbsp;</td>
+				<td>
+				<asp:TextBox ID="txtSearchIni<%= objColumn.Name %>" runat="server" MaxLength="10" CssClass="calendar" />
+				<asp:CalendarExtender ID="txtSearchIni<%= objColumn.Name %>_CalendarExtender" runat="server"
+					Format="yyyy/MM/dd"
+					Enabled="True" TargetControlID="txtSearchIni<%= objColumn.Name %>">
+				</asp:CalendarExtender>
+				</td>
+				<td> &nbsp;&nbsp;Y:&nbsp; </td>
+				<td>
+				<asp:TextBox ID="txtSearchFin<%= objColumn.Name %>" runat="server" MaxLength="10" CssClass="calendar" />
+				<asp:CalendarExtender ID="txtSearchFin<%= objColumn.Name %>_CalendarExtender" runat="server"
+					Format="yyyy/MM/dd"
+					Enabled="True" TargetControlID="txtSearchFin<%= objColumn.Name %>"></asp:CalendarExtender>
+				<asp:CompareValidator ID="txtSearchFin<%= objColumn.Name %>_CompareValidator" runat="server" Display="None"
+					ErrorMessage="Esta Fecha debe ser mayor o igual que la primera Fecha" ControlToCompare="txtSearchInifecha"
+					ValidationGroup="buscar"
+					ControlToValidate="txtSearchFin<%= objColumn.Name %>" Operator="GreaterThanEqual"></asp:CompareValidator>
+				<asp:ValidatorCalloutExtender ID="txtSearchFin<%= objColumn.Name %>_CompareValidator_ValidatorCalloutExtender"
+					runat="server" Enabled="True"
+					CssClass="CustomValidatorCalloutStyle" HighlightCssClass="validatorCalloutHighlight"
+					TargetControlID="txtSearchFin<%= objColumn.Name %>_CompareValidator"></asp:ValidatorCalloutExtender>
+				</td>
+				</tr>
+				</table>
+				<%
+		Else
+		%>
+			<asp:TextBox ID="txtSearch<%= objColumn.Name %>" runat="server" /><%
+			If objColumn.DataTypeName = "numeric" OR InStr(objColumn.DataTypeName, "int") <> 0 Then
+			%>
+			<asp:FilteredTextBoxExtender ID="FilteredTextBoxExtender_txtSearch<%= objColumn.Name %>" runat="server"
+				FilterMode="ValidChars" FilterType="Numbers" TargetControlID="txtSearch<%= objColumn.Name %>" /> <%
+			ElseIf objColumn.DataTypeName = "float" Then
+			%>
+			<asp:FilteredTextBoxExtender ID="FilteredTextBoxExtender_txtSearch<%= objColumn.Name %>" runat="server"
+				FilterMode="Custom" ValidChars="1234567890." TargetControlID="txtSearch<%= objColumn.Name %>" /> <%
+			End If
+		End If
+		output.write "	</td>" & vbCrLf & "	</tr>"
+	End If
+	blnFirst = False
+Next
+%>
+	<tr>
+	<td>
+		<asp:Button ID="btnBuscar" runat="server" Text="Buscar" CssClass="button"
+		onclick="btnBuscar_Click" />
+	</td>
+	</tr>
+	</table>
+	</fieldset>
+	</td>
+	<td>
+		&nbsp;</td>
+	</tr>
+	<tr>
+	<td colspan="2">
+		<asp:GridView ID="grvBusqueda" runat="server" AutoGenerateColumns="False"
+			AllowPaging="true" AllowSorting="True" PageSize="<%= chr(60) %>%$Appsettings:numPageGrid%<%= chr(62) %>"
+			DataKeyNames="<%= objTable.PrimaryKeys(0).Name %>" onselectedindexchanging="grvBusqueda_SelectedIndexChanging"
+			onpageindexchanging="grvBusqueda_PageIndexChanging">
+			<Columns>
+				<asp:ButtonField HeaderText="Editar" ButtonType="Image" ItemStyle-HorizontalAlign="Center" ImageUrl="~/Imagenes/select.png"  CommandName="select" />
+				<%
+bInFirst = true
+
+For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+	If getParametro(objColumn, "GridView") <> "" Then
+%>
+				<asp:TemplateField HeaderText="<%= objColumn.Alias %>">
+					<ItemTemplate>
+					<asp:Label ID="lbl<%= objColumn.Name %>" Enabled="false" runat="server" EnableViewState="true" <%
+					haveCheckBox = false
+					If objColumn.DataTypeName = "bit" Then
+						haveCheckBox = true
+					%>
+						Text='<%= chr(60) %>%# Eval("<%= objColumn.Name %>").ToString() == "True" ? "Activo" : "Inactivo" %<%= chr(62) %>' /> <%
+					Else %>
+						Text='<%= chr(60) %>%# Bind("<%= objColumn.Name %>") %<%= chr(62) %>' /> <%
+					End If %>
+					</ItemTemplate>
+				</asp:TemplateField><%
+	End if
+Next
+%>
+			</Columns>
+			<EmptyDataTemplate>
+				<asp:Literal ID="ltlEmptyTable" runat="server" Text="No se encontraror registros" />
+			</EmptyDataTemplate>
+			<HeaderStyle CssClass="barraTitulo" />
+			<AlternatingRowStyle CssClass="alternatingRowStyle" />
+			<RowStyle CssClass="rowStyle" />
+			<SelectedRowStyle CssClass="selectedRowStyle" />
+		</asp:GridView>
+		<asp:Button ID="btnCrear" runat="server" Text="Crear" CssClass="button"
+			ValidationGroup="buscar"
+			onclick="btnCrear_Click1" />
+	</td>
+	</tr>
+	</table>
+	<asp:FormView ID="fvDatos" runat="server" DataKeyNames="<%= objTable.PrimaryKeys(0).Name %>" DefaultMode="Insert"
+		onprerender="fvDatos_PreRender" onitemcreated="fvDatos_ItemCreated" Visible="False">
+	<EditItemTemplate>
+	<fieldset>
+	<legend><asp:Label runat="server" ID="lblTipoEdicion" Text="Crear:" /></legend>
+	<table>
+	<%
+	For i=1 to objTable.Columns.Count - 1
+		Set objColumn = objTable.Columns(i)
+		prefijo = "txt"
+		maxLength = ""
+		If objColumn.CharacterMaxLength <> "0" Then
+			maxLength = "MaxLength=""" & objColumn.CharacterMaxLength & """"
+		End If
+	%>
+		<tr>
+			<td>
+				<%= objColumn.Alias %>:</td>
+			<td><%
+			If getParametro(objColumn, "tipoCampoHtml") = "DropDownList" Then
+				prefijo = "ddl"
+			%>
+				<asp:DropDownList ID="<%= prefijo & objColumn.Name %>" SelectedValue='<%= chr(60) %>%# Bind("<%= objColumn.Name %>") %<%= chr(62) %>' runat="server" /><%
+			ElseIf objColumn.DataTypeName = "bit" Then
+				prefijo = "chk"
+			%>
+				<asp:CheckBox ID="<%= prefijo & objColumn.Name %>" Checked='<%= chr(60) %>%# Bind("<%= objColumn.Name %>") %<%= chr(62) %>' runat="server" onClick="javaScript:setLabelEstado(this)" />
+				<label id="lbl<%= objColumn.Name %>" for='<%= chr(60) %>%# ((CheckBox)fvDatos.FindControl("chk<%= objColumn.Name %>")).ClientID %<%= chr(62) %>'>Activo</label> <%
+			ElseIf InStr(objColumn.DataTypeName, "date") <> 0 Then %>
+			<asp:TextBox ID="<%= prefijo & objColumn.Name %>" runat="server" Text='<%= chr(60) %>%# Convert.ToDateTime(Eval("<%= objColumn.Name %>")).ToString(ConfigurationManager.AppSettings["formatDate"])%<%= chr(62) %>' MaxLength="10" CssClass="calendar" />
+			<asp:CalendarExtender ID="<%= prefijo & objColumn.Name %>_CalendarExtender" runat="server"
+				Format="yyyy/MM/dd"
+				Enabled="True" TargetControlID="<%= prefijo & objColumn.Name %>">
+			</asp:CalendarExtender><%
+			Else
+				textArea = ""
+				If getParametro(objColumn, "tipoCampoHtml") = "TextArea" Then
+					textArea = " TextMode=""MultiLine"" Height=""71px"" Width=""278px"""
+				End If
+			%>
+				<asp:TextBox ID="<%= prefijo & objColumn.Name %>" <%= maxLength & textArea %> Text='<%= chr(60) %>%# Bind("<%= objColumn.Name %>") %<%= chr(62) %>' runat="server" /><%
+				If objColumn.DataTypeName = "numeric" OR objColumn.DataTypeName = "int" OR objColumn.DataTypeName = "float" Then
+				%>
+				<asp:FilteredTextBoxExtender ID="FilteredTextBoxExtender_<%= prefijo & objColumn.Name %>" runat="server"
+					FilterMode="ValidChars" FilterType="Numbers" TargetControlID="<%= prefijo & objColumn.Name %>" /> <%
+				End If
+			End If
+
+			If objColumn.DataTypeName <> "bit" Then %>
+				<asp:RequiredFieldValidator ID="<%= prefijo & objColumn.Name %>_RequiredFieldValidator"
+					ControlToValidate="<%= prefijo & objColumn.Name %>" runat="server"
+					Display="None"
+					ValidationGroup="formulario"
+					ErrorMessage="Campo Obligatorio"></asp:RequiredFieldValidator>
+				<asp:ValidatorCalloutExtender ID="<%= prefijo & objColumn.Name %>_ValidatorCalloutExtender" runat="server"
+					CssClass="CustomValidatorCalloutStyle" Enabled="True"
+					HighlightCssClass="validatorCalloutHighlight"
+					TargetControlID="<%= prefijo & objColumn.Name %>_RequiredFieldValidator"/><%
+			End If
+			%>
+			</td>
+		</tr><%
+	Next
+	%>
+		<tr>
+			<td colspan="2">
+				<br />
+				<asp:Button ID="btnGuardar" CssClass="button" runat="server" Text="Crear" OnClick="btnGuardar_Click" ValidationGroup="formulario" />
+				<asp:Button ID="btnCancelar" CssClass="button" runat="server" Text="Cancelar" onclick="btnCancelar_Click" />
+			</td>
+		</tr>
+	</table>
+	</fieldset>
+	<script language="javascript" type="text/javascript">
+		window.onload = function () { <%
+			If haveCheckBox = true Then
+				For i=1 to objTable.Columns.Count - 1
+					Set objColumn = objTable.Columns(i)
+					If objColumn.DataTypeName = "bit" Then
+			%>
+				setLabelEstado(document.getElementById('<%= chr(60) %>%# ((CheckBox)fvDatos.FindControl("chk<%= objColumn.Name %>")).ClientID %<%= chr(62) %>')); <%
+					End If
+				Next
+			End If %>
+		}
+	</script>
+	</EditItemTemplate>
+	</asp:FormView>
+
+
+
+
+
+
+
+
+
+/////////////////////Clase Completa
+using System;
+using System.Collections.Generic;
+using System.Web;
+using System.Web.UI;
+using System.Web.UI.WebControls;
+using HCSO.Server;
+using System.Data.SqlClient;
+using System.Data;
+
+namespace HCSO.Admin
+{
+	public partial class <%= TrimSpaces(objTable.Alias) %> : HistoriasClinicas
+	{
+		String spSelect = "sp_<%= LCase(objTable.Alias) %>_load";
+		String spUpdate = "sp_<%= LCase(objTable.Alias) %>_update";
+		String spInsert = "sp_<%= LCase(objTable.Alias) %>_insert";
+		String spDelete = "sp_<%= LCase(objTable.Alias) %>_delete";
+		<% Set objColumn = objTable.PrimaryKeys(0) %>
+		int registroActual = 0;
+
+		SqlParameter[] opGrilla = {
+									   new SqlParameter("<%= objColumn.Name %>", <%= objColumn.DbTargetType %>)
+								   };
+
+
+		SqlParameter[] opCombos = {
+									   new SqlParameter("estado", 1)
+								   };
+
+		string localPath = "~" + HttpContext.Current.Request.Url.LocalPath;
+
+		protected void Page_Load(object sender, EventArgs e)
+		{
+			verificarMensajeSession();
+
+			if (!Page.IsPostBack)
+			{
+				try
+				{ <%
+					For i=1 to objTable.Columns.Count - 1
+						Set objColumn = objTable.Columns(i)
+						IF getParametro(objColumn, "tipoCampoHtml") = "DropDownList" AND getParametro(objColumn, "Search") <> "" Then
+					%>
+					cargarCombo(ddlSearch<%= objColumn.Name %>, "<%= getParametro(objColumn, "sp_datosCombo") %>", opCombos, "<%= getParametro(objColumn, "sp_idValor") %>", "<%= getParametro(objColumn, "sp_idTexto") %>", "Todas"); <%
+						End If
+					Next
+					%>
+
+					fvDatos.InsertItemTemplate = fvDatos.EditItemTemplate;
+					cargarGrilla(grvBusqueda, spSelect, opGrilla);
+				}
+				catch (Exception ex)
+				{
+					setMensajeInstantaneo(ex.Message);
+				}
+			}
+		}
+
+		protected void fvDatos_PreRender(object sender, EventArgs e)
+		{
+			verificarTipoEdicion(fvDatos);<%
+			If haveCheckBox = true Then
+			%>
+			if (fvDatos.CurrentMode.Equals(FormViewMode.Insert))
+			{<%
+				For i=1 to objTable.Columns.Count - 1
+					Set objColumn = objTable.Columns(i)
+					If objColumn.DataTypeName = "bit" Then
+			%>
+				((CheckBox)fvDatos.FindControl("chk<%= objColumn.Name %>")).Checked = true; <%
+					End If
+				Next %>
+			} <%
+			End If %>
+		}
+
+		protected void grvBusqueda_SelectedIndexChanging(object sender, GridViewSelectEventArgs e)
+		{
+			try
+			{
+				fvDatos.Visible = true;
+				tblLista.Visible = false;
+
+				fvDatos.ChangeMode(FormViewMode.Edit);
+				registroActual = Convert.ToInt32(grvBusqueda.DataKeys[e.NewSelectedIndex]["<%= objTable.PrimaryKeys(0).Name %>"]);
+				SqlParameter[] op = {
+									   new SqlParameter("<%= objTable.PrimaryKeys(0).Name %>", registroActual)
+								   };
+				cargarFormulario(fvDatos, spSelect, op);
+			}
+			catch (Exception ex)
+			{
+				setMensajeInstantaneo(ex.Message);
+			}
+		}
+
+		protected void btnBuscar_Click(object sender, EventArgs e)
+		{
+			SqlParameter[] op = {
+									   <%
+										blnFirst = True
+										coma = ""
+										For i=0 to objTable.Columns.Count - 1
+											Set objColumn = objTable.Columns(i)
+											If getParametro(objColumn, "Search") <> "" Then
+
+												If Not blnFirst Then
+													' output.write ", "
+													coma = ","
+												End if
+												blnFirst = False
+
+												IF getParametro(objColumn, "tipoCampoHtml") = "DropDownList" OR objColumn.DataTypeName = "bit" Then
+												%>
+										<%= coma %> new SqlParameter("<%= objColumn.Name %>", ddlSearch<%= objColumn.Name %>.SelectedValue == "" ? null : ddlSearch<%= objColumn.Name %>.SelectedValue)<%
+												ElseIf InStr(objColumn.DataTypeName, "date") Then %>
+										<%= coma %> new SqlParameter("ini<%= objColumn.Name %>", txtSearchIni<%= objColumn.Name %>.Text.Trim() == "" ? null : txtSearchIni<%= objColumn.Name %>.Text.Trim())
+										, new SqlParameter("fin<%= objColumn.Name %>", txtSearchFin<%= objColumn.Name %>.Text.Trim() == "" ? null : txtSearchFin<%= objColumn.Name %>.Text.Trim()) <%
+												Else
+												%>
+										<%= coma %> new SqlParameter("<%= objColumn.Name %>", txtSearch<%= objColumn.Name %>.Text.Trim() == "" ? null : txtSearch<%= objColumn.Name %>.Text.Trim())<%
+												End If
+											End If
+										Next
+									   %>
+								   };
+			cargarGrilla(grvBusqueda, spSelect, op);
+		}
+
+		protected void grvBusqueda_PageIndexChanging(object sender, GridViewPageEventArgs e)
+		{
+			try
+			{
+				grvBusqueda.PageIndex = e.NewPageIndex;
+
+				SqlParameter[] op = {
+					   new SqlParameter("<%= objTable.PrimaryKeys(0).Name %>", <%= objTable.PrimaryKeys(0).DbTargetType %>) <%
+					   For i=1 to objTable.Columns.Count - 1
+							Set objColumn = objTable.Columns(i)
+							If getParametro(objColumn, "Search") <> "" Then
+								If getParametro(objColumn, "tipoCampoHtml") = "DropDownList" OR objColumn.DataTypeName = "bit" Then
+					   %>
+					   , new SqlParameter("<%= objColumn.Name %>", ddlSearch<%= objColumn.Name %>.SelectedValue == "" ? null : ddlSearch<%= objColumn.Name %>.SelectedValue) <%
+								ElseIf InStr(objColumn.DataTypeName, "date") Then %>
+					   , new SqlParameter("ini<%= objColumn.Name %>", txtSearchIni<%= objColumn.Name %>.Text.Trim() == "" ? null : txtSearchIni<%= objColumn.Name %>.Text.Trim())
+					   , new SqlParameter("fin<%= objColumn.Name %>", txtSearchFin<%= objColumn.Name %>.Text.Trim() == "" ? null : txtSearchFin<%= objColumn.Name %>.Text.Trim()) <%
+								Else
+								%>
+					   , new SqlParameter("<%= objColumn.Name %>", txtSearch<%= objColumn.Name %>.Text.Trim() == "" ? null : txtSearch<%= objColumn.Name %>.Text.Trim()) <%
+								End If
+							End If
+					   Next
+					   %>
+				   };
+
+				cargarGrilla(grvBusqueda, spSelect, op);
+			}
+			catch (Exception ex)
+			{
+				setMensajeInstantaneo(ex.Message);
+			}
+		}
+
+		protected void btnCrear_Click(object sender, EventArgs e)
+		{
+			fvDatos.ChangeMode(FormViewMode.Insert);
+		}
+
+		protected void btnCancelar_Click(object sender, EventArgs e)
+		{
+			Response.Redirect(localPath);
+		}
+
+		protected void btnGuardar_Click(object sender, EventArgs e)
+		{
+			registroActual = Convert.ToInt32(fvDatos.DataKey["<%= objTable.PrimaryKeys(0).Name %>"]);
+			string[] valorRetorno = null;
+			SqlParameter[] opUpdate = {
+									   new SqlParameter("<%= objTable.PrimaryKeys(0).Name %>", registroActual)<%
+										For i=1 to objTable.Columns.Count - 1
+											Set objColumn = objTable.Columns(i)
+											IF getParametro(objColumn, "tipoCampoHtml") = "DropDownList" Then
+											%>
+										, new SqlParameter("<%= objColumn.Name %>", ((DropDownList)fvDatos.FindControl("ddl<%= objColumn.Name %>")).SelectedValue == "" ? null : ((DropDownList)fvDatos.FindControl("ddl<%= objColumn.Name %>")).SelectedValue)<%
+											ElseIf objColumn.DataTypeName = "bit" Then
+											%>
+										, new SqlParameter("<%= objColumn.Name %>", ((CheckBox)fvDatos.FindControl("chk<%= objColumn.Name %>")).Checked)<%
+											Else
+											%>
+										, new SqlParameter("<%= objColumn.Name %>", ((TextBox)fvDatos.FindControl("txt<%= objColumn.Name %>")).Text.Trim() == "" ? null : ((TextBox)fvDatos.FindControl("txt<%= objColumn.Name %>")).Text.Trim())<%
+											End If
+										Next
+									   %>
+									   };
+
+			/*
+			 * Ajusto el id del sp de insert para enviarlo como parámetro de salida en la última posición
+			 */
+			List<SqlParameter> opInsert = new List<SqlParameter>(opUpdate);
+			opInsert.RemoveAt(0);
+			opInsert.Add(new SqlParameter("<%= objTable.PrimaryKeys(0).Name %>", ParameterDirection.Output));
+
+			try
+			{
+				switch (fvDatos.CurrentMode)
+				{
+					case FormViewMode.Insert:
+						valorRetorno = actualizarFormulario(spInsert, opInsert.ToArray());
+						fvDatos.ChangeMode(FormViewMode.Edit);
+						setMensajeSession("El registro se Creó con Exito");
+						break;
+					case FormViewMode.Edit:
+						valorRetorno = actualizarFormulario(spUpdate, opUpdate);
+						setMensajeSession("El registro se Modificó con Exito");
+						break;
+				}
+			}
+			catch (Exception ex)
+			{
+				setMensajeInstantaneo(ex.Message);
+				return;
+			}
+
+			Response.Redirect(localPath);
+		}
+
+		protected void fvDatos_ItemCreated(object sender, EventArgs e)
+		{ <%
+			For i=1 to objTable.Columns.Count - 1
+				Set objColumn = objTable.Columns(i)
+				IF getParametro(objColumn, "tipoCampoHtml") = "DropDownList" Then
+			%>
+			cargarCombo((DropDownList)fvDatos.FindControl("ddl<%= objColumn.Name %>"), "<%= getParametro(objColumn, "sp_datosCombo") %>", opCombos, "<%= getParametro(objColumn, "sp_idValor") %>", "<%= getParametro(objColumn, "sp_idTexto") %>"); <%
+				End If
+			Next
+			%>
+		}
+
+		protected void btnCrear_Click1(object sender, EventArgs e)
+		{
+			fvDatos.Visible = true;
+			tblLista.Visible = false;
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<%End If
+
+	' Save the output file for this Table
+	strFilename = strFilenameBase & objTable.Name & ".sql"
+
+	output.save strFilename, False
+	strBuffer = strBuffer & output.text
+	output.clear
+Next '  tableName
+
+output.write strBuffer
+
+filename = input.item("txtPath")
+lenth = Len(filename)
+pos = InStrRev(filename, "\")
+
+If Not pos = lenth Then
+  filename = filename & "\"
+End If
+
+filename = filename & "MicrosoftSQL_ALL.SQL"
+output.save filename, false
+
+' END OF TEMPLATE
+%>
+<%
+Function BuildCreateAlterStatement(strProcName, blnAlterStatement, strComentario)
+
+	Dim strStatement
+	strStatement = ""
+
+	If Not blnAlterStatement Then
+		' Drop and recreate
+		strStatement = strStatement & "/****** Object:  StoredProcedure [" & strProcName & "]    Script Date: " & FormatDateTime(Now(), 0) & " ******/" & vbCRLF
+		strStatement = strStatement & "IF EXISTS (SELECT * FROM dbo.sysobjects WHERE id = OBJECT_ID(N'[" & strProcName & "]') AND OBJECTPROPERTY(id,N'IsProcedure') = 1)" & vbCRLF
+		strStatement = strStatement & "    DROP PROCEDURE [" & strProcName & "];" & vbCRLF
+		strStatement = strStatement & "GO" & vbCRLF & vbCRLF
+
+
+'		strStatement = strStatement & "-- ============================================="
+'		strStatement = strStatement & "-- Author:		Richard Martínez"
+''		strStatement = strStatement & "-- Create date: 19/09/2012"
+'		strStatement = strStatement & "-- Description:	Trae los registros para la tabla "
+'		strStatement = strStatement & "--	@login: Si se pone este parámetro traerá el login seleccionado"
+'		strStatement = strStatement & "--	@notLogin: Si se pone este parámetro traerá todos los registros con excepción a @notLogin"
+'		strStatement = strStatement & "-- ============================================="
+
+
+
+'		strStatement = strStatement & "-- ============================================="
+'		strStatement = strStatement & vbCrLf & "-- Author:		Richard Martínez"
+''		strStatement = strStatement & vbCrLf & "-- Create date: 19/09/2012"
+'		strStatement = strStatement & vbCrLf & "-- Description:	Trae los registros para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+'	strStatement = strStatement & vbCrLf & "--	@" & GetParameterName(objColumn) & ": Opcional, llave primaria de la tabla " & objTable.Name & ", si se coloca sólo trae el registro de esta llave"
+'Next
+'		strStatement = strStatement & vbCrLf & "-- ============================================="
+		strStatement = strComentario & vbCrLf
+		strStatement = strStatement & "CREATE PROCEDURE [" & strProcName & "]"
+	Else
+		strStatement = strStatement & "ALTER PROCEDURE [" & strProcName & "]"
+	End If
+
+	BuildCreateAlterStatement = strStatement
+
+End Function
+
+Function GetParameterName(objColumn)
+	Dim strName
+	strName = TrimSpaces(objColumn.Name)
+	GetParameterName = strName
+End Function
+
+Function TrimSpaces(str)
+
+	Dim tname
+	Dim name
+	Dim char
+	Dim l
+
+	name = ""
+	tname = str
+	l = Len(tname)
+
+	For j = 1 To l
+		char = Mid(tname, j, 1)
+		If Not char = " " And Not Char = "." Then
+			name = name & char
+		End If
+	Next
+
+	TrimSpaces = name
+End Function
+
+Function getParametro(objColumn, llave)
+	Dim valor
+	Set props = objColumn.Properties
+	If props.ContainsKey(llave) Then
+		valor = props.Item(llave)
+	End If
+	getParametro = valor
+End Function
+
+%>
+##|BODY_END

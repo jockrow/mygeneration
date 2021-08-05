@@ -1,0 +1,126 @@
+﻿##|TYPE Template
+##|UNIQUEID 51016e3b-c98d-4a74-904e-3cb5721619b2
+##|TITLE daoXml
+##|NAMESPACE Projects.Sica
+##|SOURCE_TYPE Source
+##|OUTPUT_LANGUAGE XML
+##|GUI_ENGINE Microsoft Script
+##|GUI_LANGUAGE JScript
+##|GUI_BEGIN
+<%#SCRIPT ..\..\Capture\outputTables.js%>
+##|GUI_END
+##|BODY_MODE Markup
+##|BODY_ENGINE Microsoft Script
+##|BODY_LANGUAGE JScript
+##|BODY_TAG_START <%
+##|BODY_TAG_END %>
+##|BODY_BEGIN
+<%
+//------------------------------------------------------------------------------
+// Richard Martínez
+// 03/06/2016
+//
+//  Genera los dao/dao.xml para
+//  %SICA_HOME%\sica.0.Config\src\co\fnc\sica\afic\config\data\oracle\sql\lidergrupodao.xml
+//------------------------------------------------------------------------------
+
+// collect needed data/objects and put them in local variables
+var databaseName = input.Item("cmbDatabase");
+var tablenames = input.Item("lstTables"); 
+var database = MyMeta.Databases.Item(databaseName);
+
+// Filename info
+var filepath = input.item("txtPath");
+if (filepath.charAt(filepath.length - 1) != '\\') filepath += "\\";
+
+for (var i = 0; i < tablenames.Count; i++){
+	var primaryKeys = "";
+	var values = "";
+	var columnsHorizontal = "";
+	var columnsValues = "";
+	var columnsInsert = "";
+	var valuesInsert = "";
+	
+	var tableName = tablenames.item(i);
+	var tableMeta = database.Tables.Item(tableName);
+	var objectAlias = tableMeta.Alias.split(" ").join("");
+	
+	var typeFolder = "dao/";
+	var filename = filepath + typeFolder + tableName.replace("SC_", "").replace(/_/g, "").toLowerCase() + "dao.xml";
+	var keyTag = tableName.replace("SC_", "").replace(/_/g, ".").toLowerCase();
+
+	for (var j = 0; j < tableMeta.PrimaryKeys.Count; j++){
+		column = tableMeta.PrimaryKeys.Item(j);
+		primaryKeys += " AND " + column.name + " = ?";
+	}
+	primaryKeys = primaryKeys.replace(/^ AND /, "");
+	
+	for (var j = 0; j < tableMeta.Columns.Count; j++) 
+	{
+		column = tableMeta.Columns.Item(j);
+		if(!column.IsInPrimaryKey){
+			columnsHorizontal += ", " + column.name;
+			
+			if(column.Default == ""){
+				if(!column.name.match(/^.*_CREACION.*$/)){
+					values = column.name.toUpperCase() == "FECHA_MODIFICACION" ? "SYSDATE" : "?";
+					columnsValues += "\n\t\t\t, " + column.name + " = " + values;
+				}
+				if(!column.name.match(/^.*_MODIFICACION.*$/)){
+					columnsInsert += ", " + column.name;
+					valuesInsert += column.name.toUpperCase() == "FECHA_CREACION" ? ", SYSDATE" : ", ?";
+				}
+			}
+		}		
+	}
+%><?xml version="1.0" encoding="UTF-8"?>
+<map>
+	<entries>
+	<entry>
+		<key><%= keyTag %>.retrieve.grid</key>
+		<value>
+			SELECT <%= columnsHorizontal.replace(/^, /, "") %> FROM <%= objectAlias %>
+		</value>
+	</entry>
+	<entry>
+		<key><%= keyTag %>.retrieve.by.id</key>
+		<value>
+			SELECT <%= columnsHorizontal.replace(/^, /, "").replace(/,/g, "\n\t\t\t,") %> 
+			FROM <%= objectAlias %>
+			WHERE <%= primaryKeys %>
+		</value>
+	</entry>
+	<entry>
+		<key><%= keyTag %>.update</key>
+		<value>
+			UPDATE <%= objectAlias %>
+			SET <%= columnsValues.replace(/^\n\t\t\t, /, "") %>
+			WHERE <%= primaryKeys %>
+		</value>
+	</entry>
+	<entry>
+		<key><%= keyTag %>.insert</key>
+		<value>
+			INSERT INTO <%= objectAlias %>
+			  (<%= columnsInsert.replace(/^, /, "") %>)
+			  VALUES (<%= valuesInsert.replace(/^, /, "") %>)
+		</value>
+	</entry>
+	<entry>
+		<key><%= keyTag %>.delete</key>
+		<value>
+			DELETE
+				FROM <%= objectAlias %>
+				WHERE <%= primaryKeys %>
+		  </value>
+		</entry>
+	</entries>
+</map><%	
+	output.save(filename, false);
+	var buffer = "";
+	output.clear();
+	buffer = output.text;
+	output.write(buffer);
+}
+%>
+##|BODY_END

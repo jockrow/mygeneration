@@ -1,0 +1,163 @@
+﻿##|TYPE Template
+##|UNIQUEID 35506bcc-bd8b-4346-9969-69f23010c43a
+##|TITLE FormUpdate
+##|NAMESPACE Projects.Sica
+##|SOURCE_TYPE Source
+##|OUTPUT_LANGUAGE Java
+##|GUI_ENGINE Microsoft Script
+##|GUI_LANGUAGE JScript
+##|GUI_BEGIN
+<%#SCRIPT ..\..\Capture\outputTables.js%>
+##|GUI_END
+##|BODY_MODE Markup
+##|BODY_ENGINE Microsoft Script
+##|BODY_LANGUAGE JScript
+##|BODY_TAG_START <%
+##|BODY_TAG_END %>
+##|BODY_BEGIN
+<%
+//------------------------------------------------------------------------------
+// Richard Martínez
+// 22/06/2016
+//
+//  Genera la grilla pages/Update.jsp para
+//	%SICA_HOME%\sica.1.View\WebContent\content\pages\grupocafetero\grupoCafeteroUpdate.jsp
+//------------------------------------------------------------------------------
+
+// collect needed data/objects and put them in local variables
+var databaseName = input.Item("cmbDatabase");
+var tablenames = input.Item("lstTables"); 
+var database = MyMeta.Databases.Item(databaseName);
+
+// Filename info
+var filepath = input.item("txtPath");
+if (filepath.charAt(filepath.length - 1) != '\\') { filepath += "\\"; }
+for (var i = 0; i < tablenames.Count; i++){
+	var tableName = tablenames.item(i);
+	var tableMeta = database.Tables.Item(tableName);
+	var objectAlias = tableMeta.Alias.split(" ").join("");
+	
+	var typeFolder = "pages/";
+	var firstUpperCase = tableName.toLowerCase().replace(/^sc_/, "").replace(/(^|_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+	var firstLowerCase = firstUpperCase.replace(/^./, function(v) { return v.toLowerCase(); });
+	var allLowerCase = firstLowerCase.toLowerCase();
+	var filename = filepath + typeFolder + firstUpperCase + "Update.jsp";
+
+	var primaryKey = tableMeta.PrimaryKeys.Item(0).name.toLowerCase().replace(/(_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+	
+	output.writeln('<\%@ taglib uri="http://java.sun.com/jsf/html" prefix="h"%\>');
+	output.writeln('<\%@ taglib uri="http://java.sun.com/jsf/core" prefix="f"%\>');	
+	output.writeln('<\%@ taglib uri="http://myfaces.apache.org/tomahawk" prefix="t"%\>');
+	output.writeln('<\%@ taglib uri="https://ajax4jsf.dev.java.net/ajax" prefix="a4j"%\>');
+	//TODO: moDIFICAR h:outputText value="#{msg['<=allLowerCase>.modificar.labor.title']}" />
+%>
+<f:loadBundle basename="co.fnc.sica.afic.config.messages.<%=firstLowerCase%>" var="msg" />
+<a4j:form id="myform">
+	<h:panelGrid columns="1" styleClass="tMsgTitle01">
+		<h:outputText value="#{msg['<%=allLowerCase%>.modificar.labor.title']}" />
+	</h:panelGrid>
+	{{{<%=tableMeta.Name%> - <%=tableMeta.Alias%> - <%=tableName%> - <%=tableMeta.Properties.Item("singularUser")%>}}}
+	<a4j:region id="inputData">
+
+		<h:panelGrid columns="1" styleClass="forms" cellpadding="0"
+			cellspacing="0">
+
+			<h:panelGrid columns="2" width="100%"
+				columnClasses="fTdRight,fTdLeft">
+<%
+	for (var j = 0; j < tableMeta.Columns.Count; j++){	
+		var column = tableMeta.Columns.Item(j);
+		var columnName = column.name.toLowerCase().replace(/(_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+		var firstUpperColumnName = columnName.replace(/^./, function(v) { return v.toUpperCase(); });
+		var dotColumnName = column.name.toLowerCase().replace(/_/g, ".");
+
+		if(!column.IsInPrimaryKey && !column.name.match(/^.*_CREACION.*$/) && !column.name.match(/^.*_MODIFICACION.*$/)){
+			if(column.LanguageType == "Date"){
+%>
+				<h:outputLabel value="#{msg['<%=allLowerCase%>.<%=dotColumnName%>']}*:" />
+				<h:panelGrid columns="2" width="100%">
+					<h:panelGrid columns="3" id="<%=columnName%>"  styleClass="sc_inputCalendar">
+						<t:inputCalendar id="id<%=firstUpperColumnName%>"
+							immediate="true"	
+							value="#{ctrl<%=firstUpperCase%>.<%=firstLowerCase%>.<%=columnName%>}"
+							valueChangeListener="#{ctrl<%=firstUpperCase%>.accionValidar<%=firstUpperColumnName%>}"
+							renderAsPopup="true" renderPopupButtonAsImage="true"
+							popupDateFormat="dd/MM/yyyy" required="true">
+							<a4j:support event="onchange" ajaxSingle="true" reRender="<%=columnName%>" />
+							<f:validator validatorId="jfspin.dateValidatorRangeToday" />
+							<f:attribute name="dateMinYearsBeforeToday" value="10" />
+							<f:attribute name="dateMaxYearsAfterToday" value="0" />
+							<f:attribute name="dateFormat" value="dd/MM/yyyy" />
+						</t:inputCalendar>
+						<h:panelGrid>
+							<h:outputText styleClass="formato_fecha02" value="#{msgGral['formato.fecha']}" />
+							<h:message for="id<%=firstUpperColumnName%>" errorClass="fTdError" />
+						</h:panelGrid>
+						<h:outputText value="#{ctrl<%=firstUpperCase%>.validateCampo_<%=columnName%>}" id="msmError<%=firstUpperColumnName%>" styleClass="fTdError" />
+					</h:panelGrid>
+				</h:panelGrid>
+<%
+			}
+			else if(column.LanguageType == "Integer" && column.name.match(/^ID_.*/)){
+			%>
+				<h:outputLabel value="#{msg['<%=allLowerCase%>.<%=dotColumnName.replace("id.", "")%>']}*:" />
+				<h:panelGrid id="<%=columnName.replace(/^id/, "").replace(/^./, function(v) { return v.toLowerCase(); })%>">
+					<h:selectOneMenu id="<%=columnName%>" required="true"
+						value="#{ctrl<%=firstUpperCase%>.<%=firstLowerCase%>.<%=columnName%>}">
+						<%="<\%-- TODO:Verificar si pega al ctrl" + firstUpperCase + " o al ctrlUser --%\>"%>
+						<f:selectItems value="#{ctrlUser.<%=columnName.replace(/^id/, "list")%>}" />
+					</h:selectOneMenu>
+					<h:message for="<%=columnName%>" errorClass="fTdError" />
+				</h:panelGrid>
+<%
+			}
+			else{
+%>
+				<h:outputLabel value="#{msg['<%=allLowerCase%>.<%=dotColumnName%>']}*:" />
+				<h:panelGrid columns="3">
+					<h:inputText id="<%=columnName%>" required="true"
+						valueChangeListener="#{ctrl<%=firstUpperCase%>.existe<%=firstUpperCase%>}"
+						value="#{ctrl<%=firstUpperCase%>.<%=firstLowerCase%>.<%=columnName%>}">
+						<a4j:support event="onchange" ajaxSingle="true" reRender="<%=columnName%>,msmError<%=firstUpperColumnName%>" />
+					</h:inputText>
+					<h:outputText value="#{ctrl<%=firstUpperCase%>.valid<%=firstUpperColumnName%>}" id="msmError<%=firstUpperColumnName%>"
+						styleClass="fTdError" />
+					<h:message for="<%=columnName%>" errorClass="fTdError" />
+				</h:panelGrid>
+<%
+			}
+		}
+	}
+%>
+			</h:panelGrid>
+		</h:panelGrid>
+		
+		<h:panelGrid id="pgButtons" columns="3">
+			<h:commandButton id="btUpdate" value="#{msgGral['button.update']}"
+				action="#{ctrl<%=firstUpperCase%>.action<%=firstUpperCase%>Update}" />
+			<h:commandButton id="btRestaurar" immediate="true"
+				value="#{msgGral['button.restaurar']}"
+				action="#{ctrl<%=firstUpperCase%>.action<%=firstUpperCase%>Restaurar}" />
+			<h:commandButton value="#{msgGral['button.back']}"
+				action="#{ctrl<%=firstUpperCase%>.actionGoToGrid}" immediate="true" />
+		</h:panelGrid>
+	</a4j:region>
+
+	<h:panelGrid id="errores" columns="1" columnClasses="fTdError">
+		<h:messages globalOnly="true" />
+	</h:panelGrid>
+
+	<h:panelGrid id="message" styleClass="tMsgConfirm">
+		<h:message for="message" />
+	</h:panelGrid>
+
+</a4j:form>
+<%
+	output.save(filename, false);
+	var buffer = "";
+	output.clear();
+	buffer = output.text;
+	output.write(buffer);
+}
+%>
+##|BODY_END

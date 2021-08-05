@@ -5,12 +5,13 @@
 ##|SOURCE_TYPE Source
 ##|OUTPUT_LANGUAGE Transact-SQL
 ##|COMMENTS_BEGIN
-Use this for SQL dOOdads or other business entities. Select multiple tables and generate all your stored procedures 
+Use this for SQL dOOdads or other business entities. Select multiple tables and generate all your stored procedures
 in one click!
 ##|COMMENTS_END
 ##|GUI_ENGINE Microsoft Script
 ##|GUI_LANGUAGE VBScript
 ##|GUI_BEGIN
+
 Dim cmbDatabases
 Dim lstTables
 
@@ -19,10 +20,10 @@ Sub setup()
 	Dim sOutputPath
 
 	If Not input.Contains("lstTables") Or Not input.Contains("txtPath") Then
-	
+
 		If context.Objects.ContainsKey("DnpUtils") Then
 			DnpUtils.ReadInputFromCache(context)
-		End if	
+		End if
 
 		ui.Title = "Microsoft SQL Server Stored Procedures"
 		ui.Width  = 330
@@ -30,7 +31,7 @@ Sub setup()
 
 		' Grab default output path
 		sOutputPath = ""
-		If input.Contains("defaultOutputPath") Then 
+		If input.Contains("defaultOutputPath") Then
 			sOutputPath = input.Item("defaultOutputPath")
 		End If
 
@@ -55,9 +56,9 @@ Sub setup()
 		ui.AddCheckBox "chkAlter", "Use ALTER procedures", False, "Check this to ALTER existing stored procedures, good for preserving permissions"
 		ui.AddCheckBox "chkGenDoc", "Generate Documentation", True, "Check this to generate documentation after stored procedures are generated"
 		ui.AddCheckBox "chk2005", "Targeting SQL 2005", False, "Check this if you are using SQL 2005"
-		
+
 		ui.ShowGUI = True
-	Else 
+	Else
 		ui.ShowGUI = False
 	End if
 
@@ -94,7 +95,7 @@ End Sub
 ' SQL_StoredProcs.vbgen
 ' Last Update : 12/23/2005
 '
-' Be sure to rename this template if you plan to customize it, MyGeneration 
+' Be sure to rename this template if you plan to customize it, MyGeneration
 ' Software will update this template with new builds.
 '------------------------------------------------------------------------------
 '
@@ -112,16 +113,16 @@ End Sub
 '
 '   For Each TableName in Select Tables
 '        objTable = database.Tables(TableName)
-' 	
+'
 '	Generate the 5 stored procs
 '
 '   Save file
 '
-'  However, all of the script ends up in the Output tab and you can copy this right into 
+'  However, all of the script ends up in the Output tab and you can copy this right into
 '  Sql QueryAnalyzer and execute it.  It's a pretty smart template, it knows to make
 '  Identity Columns output parameters to return them, the same holds true for computed
 '  Columns. It knows how to use PrimaryKeys in WHERE clauses and not to update them
-'  in the UpdateStored Proc, if you have a TimeStamp it will do the comparison for you and 
+'  in the UpdateStored Proc, if you have a TimeStamp it will do the comparison for you and
 '  so on.  This template alone can save you tons of time, and at anytime you can regenerate
 '  them as tables change.
 '======================================================================
@@ -143,7 +144,7 @@ Dim strWhereFields
 Dim strComma
 Dim colTableNames
 Dim strBuffer
-Dim strDatabaseName 
+Dim strDatabaseName
 Dim blnGenDoc
 Dim strFilename
 Dim strFilenameBase
@@ -168,7 +169,7 @@ chk2005 = input.Item("chk2005")
 strFilenameBase = input.Item("txtPath")
 
 intLen = Len(strFilenameBase)
-intPos = InStrRev(strFilenameBase, "\") 
+intPos = InStrRev(strFilenameBase, "\")
 
 If Not intPos = intLen Then
 	strFilenameBase = strFilenameBase & "\"
@@ -182,31 +183,45 @@ GO
 For intLp = 0 To colTableNames.Count - 1
 
 	Set objTable = objDatabase.Tables(colTableNames.item(intLp))
-	
+
 	If objTable.PrimaryKeys.Count = 0 Then
 		output.write "-- ERROR: Table '" & objTable.Name & "' must have a primary key" & vbCrLf
 		Exit For
-	End If 
+	End If
 
 '----------------------------------------------------------------------
-' LoadByPrimaryKey 
+' LoadByPrimaryKey
 '----------------------------------------------------------------------
-strProcName = "PA_" & objTable.Name & "LoadByPrimaryKey"	
+strProcName = "PA_" & objTable.Name & "_LOAD"
+Dim strComentario
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	Trae los registros para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": Opcional, llave primaria de la tabla " & objTable.Name & ", si se coloca sólo trae el registro de esta llave"
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
 %>
-<%= BuildCreateAlterStatement(strProcName, alterStatement) %>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
 (
 <%
 	' List all keys as parameters
 	blnFirst = True
-	For Each objColumn In objTable.PrimaryKeys
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
 
-		If Not blnFirst Then 
+		If Not blnFirst Then
 			output.write  "," & vbCrLf
-		End if	
+		End if
 
-		blnFirst = False	
+		blnFirst = False
 
-		output.write "	@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete
+		output.write "	@" & GetParameterName(objColumn) & " " & objColumn.DataTypeNameComplete & " = NULL"
 	Next
 %>
 )
@@ -219,13 +234,15 @@ BEGIN
 <%
 	' List all fields
 	blnFirst = True
-	For Each objColumn In objTable.Columns
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
 
-		If Not blnFirst Then 
+		If Not blnFirst Then
 			output.write  "," & vbCrLf
-		End if	
+		End if
 
-		blnFirst = False			
+		blnFirst = False
 
 		output.write "		[" & objColumn.Name & "]"
 	Next
@@ -236,18 +253,21 @@ BEGIN
 <%
 	' Compare keys with parameters
 	blnFirst = True
-	For Each objColumn In objTable.PrimaryKeys
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
 
-		If Not blnFirst Then 
+		If Not blnFirst Then
 			output.write  " AND" & vbCrLf
-		End if	
+		End if
 
-		blnFirst = False					
+		blnFirst = False
 
-		output.write "		([" & objColumn.Name & "] = @" & GetParameterName(objColumn) & ")"
+'		output.write "		([" & objColumn.Name & "] = @" & GetParameterName(objColumn) & ")"
+		output.write "		(@" & objColumn.Name & " IS NULL OR " & objColumn.Name & " = @" & objColumn.Name & ")"
 	Next
 
-	output.write vbCrLf		
+	output.write vbCrLf
 %>
 	SET @Err = @@Error
 
@@ -261,54 +281,14 @@ IF (@@Error = 0) PRINT 'Procedure Creation: <%output.write strProcName%> Succeed
 ELSE PRINT 'Procedure Creation: <%output.write strProcName%> Error on Creation'
 GO
 <%End If
-
-'----------------------------------------------------------------------
-' LoadAll 
-'----------------------------------------------------------------------
-strProcName = "PA_" & objTable.Name & "LOAD_ALL"		
-%>
-<%= BuildCreateAlterStatement(strProcName, alterStatement) %>
-AS
-BEGIN
-
-	SET NOCOUNT ON
-	DECLARE @Err int
-
-	SELECT
-<%
-		' List all fields
-		blnFirst = True
-		For Each objColumn In objTable.Columns
-			If Not blnFirst Then 
-				output.write  "," & vbCrLf
-			End if
-
-			blnFirst = False	
-
-			output.write "		[" & objColumn.Name & "]"
-		Next
-%>
-	FROM [<%output.write objTable.Name %>]
-
-	SET @Err = @@Error
-
-	RETURN @Err
-END
-GO
-
-<%If blnGenDoc Then%>
--- Display the status of Proc creation
-IF (@@Error = 0) PRINT 'Procedure Creation: <%output.write strProcName%> Succeeded'
-ELSE PRINT 'Procedure Creation: <%output.write strProcName%> Error on Creation'
-GO
-<%End If
-
 '----------------------------------------------------------------------
 ' Update
 '----------------------------------------------------------------------
 Dim colCount
 colCount = 0
-For Each objColumn In objTable.Columns
+'For Each objColumn In objTable.Columns
+For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
 	If objColumn.IsInPrimaryKey Or objColumn.IsComputed Then
 		colCount = ColCount + 1
 	End If
@@ -320,18 +300,32 @@ If (objTable.Columns.Count = colCount)  Then
 	output.writeLn "-- NO UPDATE Stored Procedure Generated    "
 	output.writeLn "-- All Columns are part of the Primary key "
 	output.writeLn "-------------------------------------------"
-	output.writeLn ""	
+	output.writeLn ""
 Else
-strProcName = "PA_" & objTable.Name & "UPDATE"			
+strProcName = "PA_" & objTable.Name & "_UPDATE"
+
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	actualiza un registro para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": llave primaria de la tabla " & objTable.Name & ", para actualizar ese registro"
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
 %>
-<%= BuildCreateAlterStatement(strProcName, alterStatement) %>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
 (
 <%
 	' List all parameters
 	blnFirst = True
-	For Each objColumn In objTable.Columns
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
 
-		If Not blnFirst Then 
+		If Not blnFirst Then
 			output.write  "," & vbCrLf
 		End if
 
@@ -344,8 +338,8 @@ strProcName = "PA_" & objTable.Name & "UPDATE"
 		End If
 
 		If objColumn.IsComputed Then
-			output.write " output"				
-		End If				
+			output.write " output"
+		End If
 
 	Next
 %>
@@ -361,27 +355,31 @@ BEGIN
 <%
 	' List all fields
 	blnFirst = True
-	For Each objColumn In objTable.Columns
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
 
 		If Not objColumn.IsInPrimaryKey And Not objColumn.IsAutoKey And Not objColumn.IsComputed Then
-		   
-			If Not blnFirst Then 
+
+			If Not blnFirst Then
 				output.write  "," & vbCrLf
-			End if	
+			End if
 
 			blnFirst = False
 
 			output.write "		[" & objColumn.Name & "] = @" & TrimSpaces(objColumn.Name)
-		End If	
+		End If
 	Next
 
-	output.write vbCrLf		
+	output.write vbCrLf
 %>	WHERE
 <%
 	' Compare keys with parameters
 	blnFirst = True
-	For Each objColumn In objTable.PrimaryKeys
-		If Not blnFirst Then 
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+		If Not blnFirst Then
 			output.write "	AND	[" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf
 		Else
 			output.write "		[" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf
@@ -389,20 +387,22 @@ BEGIN
 		blnFirst = False
 	Next
 
-	For Each objColumn In objTable.Columns
-		If objColumn.DataTypeName = "timestamp" Then 		
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
+		If objColumn.DataTypeName = "timestamp" Then
 			If Not chkYukon Then
-				output.write "	AND TSEQUAL([" & objColumn.Name & "],@" & GetParameterName(objColumn) & ")" & vbCrLf	
-			Else 
-				output.write "	AND [" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf				
+				output.write "	AND TSEQUAL([" & objColumn.Name & "],@" & GetParameterName(objColumn) & ")" & vbCrLf
+			Else
+				output.write "	AND [" & objColumn.Name & "] = @" & GetParameterName(objColumn) & vbCrLf
 			End If
 		End if
-	Next		
+	Next
 %>
 
 	SET @Err = @@Error
-<%	
-	' Add the Logic to return computed columns if necessary 
+<%
+	' Add the Logic to return computed columns if necessary
 	blnHasComputed = False
 	strWhereClause = ""
 	strWhereAnd = ""
@@ -410,7 +410,9 @@ BEGIN
 	strComma = ""
 
 	blnFirst = True
-	For Each objColumn In objTable.Columns
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
 
 		If objColumn.IsComputed Then
 			blnHasComputed = True
@@ -422,18 +424,18 @@ BEGIN
 		End If
 
 		If objColumn.IsComputed Then
-			strWhereFields = strWhereFields & strComma & "@" & GetParameterName(objColumn) & " = [" &  objColumn.Name & "]" 
-			strComma =  ", " 
-		End If		
+			strWhereFields = strWhereFields & strComma & "@" & GetParameterName(objColumn) & " = [" &  objColumn.Name & "]"
+			strComma =  ", "
+		End If
 	Next
 
 	If blnHasComputed Then
 		output.write vbCrLf
 		output.write "    SELECT "
 		output.write strWhereFields
-		output.write vbCrLf & "      FROM [" & objTable.Name & "]" 
-		output.write vbCrLf & "     WHERE " & strWhereClause & vbCrLf			
-	End If		
+		output.write vbCrLf & "      FROM [" & objTable.Name & "]"
+		output.write vbCrLf & "     WHERE " & strWhereClause & vbCrLf
+	End If
 %>
 
 	RETURN @Err
@@ -453,18 +455,32 @@ GO
 '----------------------------------------------------------------------
 ' Insert
 '----------------------------------------------------------------------
-strProcName = "PA_" & objTable.Name & "INSERT"
+strProcName = "PA_" & objTable.Name & "_INSERT"
+
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	Elimina un registro para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": dato para el campo " & GetParameterName(objColumn)
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
 %>
-<%= BuildCreateAlterStatement(strProcName, alterStatement) %>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
 (
 <%
 	' List all fields as parameters
 	blnFirst = True
-	For Each objColumn In objTable.Columns
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+	Set objColumn = objTable.Columns(i)
 
-		If Not blnFirst Then 
+		If Not blnFirst Then
 			output.write "," & vbCrLf
-		End If 
+		End If
 
 		blnFirst = False
 
@@ -475,8 +491,8 @@ strProcName = "PA_" & objTable.Name & "INSERT"
 		End If
 
 		If objColumn.IsAutoKey Or objColumn.IsComputed Then
-			output.write " output"				
-		End If				
+			output.write " output"
+		End If
 	Next
 %>
 )
@@ -488,7 +504,9 @@ BEGIN
 <%
 	' generate code to initialize (if necessary) for all keys of uniqueidentifier type
 	blnFirst = True
-	For Each objColumn In objTable.PrimaryKeys
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
 
 		If objColumn.DataTypeNameComplete = "uniqueidentifier" Then
 			output.write "	IF @" & GetParameterName(objColumn) & " IS NULL" & vbCrLf
@@ -498,7 +516,7 @@ BEGIN
 			output.write vbCrLf
 			output.write "	IF (@Err <> 0)" & vbCrLf
 			output.write "	    RETURN @Err" & vbCrLf
-			output.write vbCrLf 
+			output.write vbCrLf
 		End If
 	Next
 %>
@@ -508,34 +526,38 @@ BEGIN
 <%
 		' List all fields except identity (if one exists)
 		blnFirst = True
-		For Each objColumn In objTable.Columns
+		'For Each objColumn In objTable.Columns
+		For i=0 to objTable.Columns.Count - 1
+			Set objColumn = objTable.Columns(i)
 
 			' Check if field is not an indentity in which case we won't include it into insert list
-			If Not objColumn.IsAutoKey And Not objColumn.IsComputed Then 			
-				If Not blnFirst Then 
+			If Not objColumn.IsAutoKey And Not objColumn.IsComputed Then
+				If Not blnFirst Then
 					output.write  "," & vbCrLf
-				End if	
+				End if
 
 				blnFirst = False
 
-				output.write "		[" & objColumn.Name & "]" 
+				output.write "		[" & objColumn.Name & "]"
 			End If
 		Next
 
-		output.write vbCrLf 		
+		output.write vbCrLf
 %>	)
 	VALUES
 	(
 <%
 		' List all parameters except the one for indetity (if one exists)
 		blnFirst = True
-		For Each objColumn In objTable.Columns
+		'For Each objColumn In objTable.Columns
+		For i=0 to objTable.Columns.Count - 1
+			Set objColumn = objTable.Columns(i)
 
 			' check if fields is not an identity
-			If Not objColumn.IsAutoKey And Not objColumn.IsComputed Then 			
-				If Not blnFirst Then 
+			If Not objColumn.IsAutoKey And Not objColumn.IsComputed Then
+				If Not blnFirst Then
 					output.write  "," & vbCrLf
-				End if	
+				End if
 
 				blnFirst = False
 
@@ -543,13 +565,13 @@ BEGIN
 			End If
 		Next
 
-		output.write vbCrLf 				
+		output.write vbCrLf
 %>	)
 
 	SET @Err = @@Error
 
 <%
-	' Add the Logic to return computed columns if necessary 
+	' Add the Logic to return computed columns if necessary
 	blnHasComputed = False
 	strWhereClause = ""
 	strWhereAnd = ""
@@ -557,11 +579,13 @@ BEGIN
 	strComma = ""
 
 	blnFirst = True
-	For Each objColumn In objTable.Columns
+	'For Each objColumn In objTable.Columns
+	For i=0 to objTable.Columns.Count - 1
+		Set objColumn = objTable.Columns(i)
 
 		If objColumn.IsAutoKey Then
 			output.write "	SELECT @" & GetParameterName(objColumn) & " = SCOPE_IDENTITY()" & vbCrLf
-		End If	
+		End If
 
 		If objColumn.IsComputed Then
 			blnHasComputed = True
@@ -573,18 +597,18 @@ BEGIN
 		End If
 
 		If objColumn.IsComputed Then
-			strWhereFields = strWhereFields & strComma & "@" & GetParameterName(objColumn) & " = [" &  objColumn.Name & "]" 
-			strComma =  ", " 
-		End If		
+			strWhereFields = strWhereFields & strComma & "@" & GetParameterName(objColumn) & " = [" &  objColumn.Name & "]"
+			strComma =  ", "
+		End If
 	Next
 
 	If blnHasComputed Then
 		output.write vbCrLf
 		output.write "    SELECT "
 		output.write strWhereFields
-		output.write vbCrLf & "      FROM [" & objTable.Name & "]" 
-		output.write vbCrLf & "     WHERE " & strWhereClause & vbCrLf			
-	End If		
+		output.write vbCrLf & "      FROM [" & objTable.Name & "]"
+		output.write vbCrLf & "     WHERE " & strWhereClause & vbCrLf
+	End If
 %>
 	RETURN @Err
 END
@@ -600,14 +624,28 @@ GO
 '----------------------------------------------------------------------
 ' Delete
 '----------------------------------------------------------------------
-strProcName = "PA_" & objTable.Name & "DELETE"		
+strProcName = "PA_" & objTable.Name & "_DELETE"
+
+strComentario = ""
+strComentario = strComentario & "-- ============================================="
+strComentario = strComentario & vbCrLf & "-- Author:		Richard Martínez"
+'		strComentario = strComentario & vbCrLf & "-- Create date: 19/09/2012"
+strComentario = strComentario & vbCrLf & "-- Description:	Elimina un registro para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+For k=0 to objTable.PrimaryKeys.Count - 1
+	Set objColumn = objTable.PrimaryKeys(k)
+	strComentario = strComentario & vbCrLf & "--	@" & GetParameterName(objColumn) & ": llave primaria de la tabla " & objTable.Name & ", para eliminar ese registro"
+Next
+strComentario = strComentario & vbCrLf & "-- ============================================="
 %>
-<%= BuildCreateAlterStatement(strProcName, alterStatement) %>
+<%= BuildCreateAlterStatement(strProcName, alterStatement, strComentario) %>
 (
 <%
 	' List all keys as parameters
 	blnFirst = True
-	For Each objColumn In objTable.PrimaryKeys
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
 
 		' check if at end of keys
 		If Not blnFirst Then
@@ -632,7 +670,9 @@ BEGIN
 <%
 	' Compare keys with parameters
 	blnFirst = True
-	For Each objColumn In objTable.PrimaryKeys
+	'For Each objColumn In objTable.PrimaryKeys
+	For k=0 to objTable.PrimaryKeys.Count - 1
+		Set objColumn = objTable.PrimaryKeys(k)
 
 		' Continue where part with an AND
 		If Not blnFirst Then
@@ -664,42 +704,62 @@ GO
 	strBuffer = strBuffer & output.text
 	output.clear
 Next '  tableName
-	
+
 output.write strBuffer
 
-filename = input.item("txtPath") 
-lenth = Len(filename) 
-pos = InStrRev(filename, "\") 
+filename = input.item("txtPath")
+lenth = Len(filename)
+pos = InStrRev(filename, "\")
 
-If Not pos = lenth Then 
-  filename = filename & "\" 
-End If 
+If Not pos = lenth Then
+  filename = filename & "\"
+End If
 
-filename = filename & "MicrosoftSQL_ALL.SQL" 
-output.save filename, false 
+filename = filename & "MicrosoftSQL_ALL.SQL"
+output.save filename, false
 
 ' END OF TEMPLATE
 %>
 
 <%
-Function BuildCreateAlterStatement(strProcName, blnAlterStatement)
+Function BuildCreateAlterStatement(strProcName, blnAlterStatement, strComentario)
 
 	Dim strStatement
 	strStatement = ""
-	
-	If Not blnAlterStatement Then 
+
+	If Not blnAlterStatement Then
 		' Drop and recreate
 		strStatement = strStatement & "/****** Object:  StoredProcedure [" & strProcName & "]    Script Date: " & FormatDateTime(Now(), 0) & " ******/" & vbCRLF
 		strStatement = strStatement & "IF EXISTS (SELECT * FROM dbo.sysobjects WHERE id = OBJECT_ID(N'[" & strProcName & "]') AND OBJECTPROPERTY(id,N'IsProcedure') = 1)" & vbCRLF
 		strStatement = strStatement & "    DROP PROCEDURE [" & strProcName & "];" & vbCRLF
 		strStatement = strStatement & "GO" & vbCRLF & vbCRLF
-	
+
+
+'		strStatement = strStatement & "-- ============================================="
+'		strStatement = strStatement & "-- Author:		Richard Martínez"
+''		strStatement = strStatement & "-- Create date: 19/09/2012"
+'		strStatement = strStatement & "-- Description:	Trae los registros para la tabla "
+'		strStatement = strStatement & "--	@login: Si se pone este parámetro traerá el login seleccionado"
+'		strStatement = strStatement & "--	@notLogin: Si se pone este parámetro traerá todos los registros con excepción a @notLogin"
+'		strStatement = strStatement & "-- ============================================="
+
+
+
+'		strStatement = strStatement & "-- ============================================="
+'		strStatement = strStatement & vbCrLf & "-- Author:		Richard Martínez"
+''		strStatement = strStatement & vbCrLf & "-- Create date: 19/09/2012"
+'		strStatement = strStatement & vbCrLf & "-- Description:	Trae los registros para la tabla " & objTable.Name
+'For Each objColumn In objTable.PrimaryKeys
+'	strStatement = strStatement & vbCrLf & "--	@" & GetParameterName(objColumn) & ": Opcional, llave primaria de la tabla " & objTable.Name & ", si se coloca sólo trae el registro de esta llave"
+'Next
+'		strStatement = strStatement & vbCrLf & "-- ============================================="
+		strStatement = strComentario & vbCrLf
 		strStatement = strStatement & "CREATE PROCEDURE [" & strProcName & "]"
 	Else
 		strStatement = strStatement & "ALTER PROCEDURE [" & strProcName & "]"
-	End If 
+	End If
 
-	BuildCreateAlterStatement = strStatement 
+	BuildCreateAlterStatement = strStatement
 
 End Function
 

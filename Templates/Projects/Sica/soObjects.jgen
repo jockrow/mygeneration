@@ -1,0 +1,87 @@
+﻿##|TYPE Template
+##|UNIQUEID 829e7bed-55e9-45e4-8109-ae4b4a850efc
+##|TITLE soObjects
+##|NAMESPACE Projects.Sica
+##|SOURCE_TYPE Source
+##|OUTPUT_LANGUAGE Java
+##|GUI_ENGINE Microsoft Script
+##|GUI_LANGUAGE JScript
+##|GUI_BEGIN
+<%#SCRIPT ..\..\Capture\outputTables.js%>
+##|GUI_END
+##|BODY_MODE Markup
+##|BODY_ENGINE Microsoft Script
+##|BODY_LANGUAGE JScript
+##|BODY_TAG_START <%
+##|BODY_TAG_END %>
+##|BODY_BEGIN
+<%
+//------------------------------------------------------------------------------
+// Richard Martínez
+// 20/06/2016
+//
+//  Genera los so/SO.java para
+//	%SICA_HOME%\sica.0.ServiceObjects\src\co\fnc\sica\afic\so\laboreduca\SOLaborEducacion.java
+//------------------------------------------------------------------------------
+
+// collect needed data/objects and put them in local variables
+var databaseName = input.Item("cmbDatabase");
+var tablenames = input.Item("lstTables"); 
+var database = MyMeta.Databases.Item(databaseName);
+
+// Filename info
+var filepath = input.item("txtPath");
+if (filepath.charAt(filepath.length - 1) != '\\') { filepath += "\\"; }
+for (var i = 0; i < tablenames.Count; i++){
+	var tableName = tablenames.item(i);
+	var tableMeta = database.Tables.Item(tableName);
+	var objectAlias = tableMeta.Alias.split(" ").join("");
+	
+	var typeFolder = "so/";
+	var firstUpperCase = tableName.toLowerCase().replace(/^sc_/, "").replace(/(^|_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+	var className = "SO" + firstUpperCase;
+	var filename = filepath + typeFolder + className + ".java";
+
+	var importDate = "";
+	var properties = "";
+	for (var j = 0; j < tableMeta.Columns.Count; j++){
+		var column = tableMeta.Columns.Item(j);
+		var columnName = column.name.toLowerCase().replace(/(_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+		
+		if(column.DataTypeName == "DATE" && importDate == ""){
+			importDate = "import java.util.Date;\n";
+		}
+		properties += "\n\n	private " + column.LanguageType + " " + columnName + ";";
+	}
+	output.write("package co.fnc.sica.afic.so." + firstUpperCase.toLowerCase() + ";\n\n");
+	if(importDate != ""){
+		output.write(importDate);
+	}	
+%>
+public class <%=className %> extends SOBase {
+	private static final long serialVersionUID = 1L;<%
+	output.write(properties);
+	for (var j = 0; j < tableMeta.Columns.Count; j++){
+		var column = tableMeta.Columns.Item(j);
+		var columnName = column.name.toLowerCase().replace(/(^|_)(.)/g, function(v) { return v.toUpperCase(); }).replace(/_/g, "");
+		var varName = columnName.replace(/(^.)/, function(v) { return v.toLowerCase(); });
+		%>
+
+	public <%=column.LanguageType%> get<%=columnName%>(){
+		return <%=varName%>;
+	}
+
+	public set<%=columnName%>(<%=column.LanguageType%> <%=varName%>){
+		this.<%=varName%> = <%=varName%>;
+	}<%
+	}
+	output.write("\n}");
+
+	output.save(filename, false);
+	var buffer = "";
+	output.clear();
+	buffer = output.text;
+	output.write(buffer);
+}
+%>
+##|BODY_END
