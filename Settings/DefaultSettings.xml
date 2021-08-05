@@ -1,19 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<DefaultSettings Version="1.3.1.1" FirstTime="true">
+<DefaultSettings Version="1.3.1.1" FirstTime="false">
   <Setting Name="VersionRSSUrl" value="http://sourceforge.net/export/rss2_projfiles.php?group_id=198893" />
   <Setting Name="TemplateBrowserExecAsync" value="True" />
   <Setting Name="ShowDefaultDatabaseOnly" value="False" />
-  <Setting Name="ConsoleWriteGeneratedDetails" value="False" />
-  <Setting Name="DocStyleSettings" value="False" />
+  <Setting Name="ConsoleWriteGeneratedDetails" value="True" />
+  <Setting Name="DocStyleSettings" value="True" />
   <Setting Name="FontFamily" value="" />
   <Setting Name="DbDriver" value="SQL" />
-  <Setting Name="ConnectionString" value="Provider=SQLOLEDB.1;Persist Security Info=False;User ID=sa;Data Source=localhost" />
   <Setting Name="LanguageMappingFile" value="D:\Apps\mygeneration\Settings\Languages.xml" />
   <Setting Name="Language" value="C#" />
   <Setting Name="DbTargetMappingFile" value="D:\Apps\mygeneration\Settings\DbTargets.xml" />
   <Setting Name="DbTarget" value="SqlClient" />
   <Setting Name="UserMetaDataFileName" value="D:\Apps\mygeneration\Settings\UserMetaData.xml" />
-  <Setting Name="EnableLineNumbering" value="False" />
+  <Setting Name="EnableLineNumbering" value="True" />
   <Setting Name="EnableClipboard" value="True" />
   <Setting Name="CodePage" value="-1" />
   <Setting Name="Tabs" value="4" />
